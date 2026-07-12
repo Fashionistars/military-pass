@@ -1,0 +1,28 @@
+"use client";
+
+import { PostHogProvider as PHProvider } from "posthog-js/react";
+import posthog from "posthog-js";
+
+export function PostHogProvider({ children }: { children: React.ReactNode }) {
+  if (typeof window !== "undefined") {
+    posthog.init(process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN!, {
+      api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
+      // Disable ingestion in local development to avoid 404 errors
+      disable_persistence: process.env.NODE_ENV === "development",
+      // Only capture in production
+      capture_pageview: process.env.NODE_ENV === "production",
+      capture_pageleave: process.env.NODE_ENV === "production",
+      loaded: (ph) => {
+        if (process.env.NODE_ENV === "development") {
+          console.log("PostHog initialized in development mode (analytics disabled)");
+        }
+      },
+    });
+  }
+
+  return (
+    <PHProvider client={posthog}>
+      {children}
+    </PHProvider>
+  );
+}

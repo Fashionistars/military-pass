@@ -1,0 +1,45 @@
+# Military Pass AI Engine — Hugging Face ZeroGPU Space Requirements
+# ================================================================
+
+# Gradio (HF Spaces SDK)
+gradio>=5.0.0
+
+# ZeroGPU
+spaces
+
+# Face Swap — InsightFace + ONNX
+insightface==0.7.3
+onnxruntime-gpu==1.16.3
+opencv-python-headless==4.8.1.78
+huggingface-hub
+
+# Face Restoration — GFPGAN
+gfpgan==1.3.8
+facexlib==0.3.0
+basicsr==1.4.2
+
+# Face Mesh — MediaPipe
+mediapipe==0.10.9
+
+# Image processing
+Pillow==10.2.0
+numpy==1.26.3
+scikit-image==0.22.0
+
+# Voice Transform — WORLD vocoder
+pyworld==0.3.4
+soundfile==0.12.1
+librosa==0.10.1
+scipy==1.12.0
+
+# Voice Training — HuBERT + FAISS
+torch==2.1.2
+torchaudio==2.1.2
+transformers==4.37.2
+faiss-cpu
+
+# Environment
+python-dotenv
+
+# Audio
+praat-parselmouth==0.4.3
