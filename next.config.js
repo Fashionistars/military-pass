@@ -34,14 +34,15 @@ const nextConfig = {
     formats: ["image/avif", "image/webp"],
   },
 
-  // ── HTTP Security headers (app-level only; deployment-level in vercel.json) ──
-  // X-Frame-Options, X-Content-Type-Options, HSTS are set in vercel.json.
-  // Here we set only app-specific headers to avoid conflicts.
+  // ── HTTP Security headers (app-level for HF Spaces Docker deployment) ──
   async headers() {
     return [
       {
         source: "/(.*)",
         headers: [
+          { key: "X-Content-Type-Options",    value: "nosniff" },
+          { key: "X-Frame-Options",          value: "SAMEORIGIN" },
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
           { key: "Referrer-Policy",          value: "strict-origin-when-cross-origin" },
           {
             key: "Permissions-Policy",

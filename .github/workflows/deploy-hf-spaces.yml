@@ -71,7 +71,7 @@ jobs:
         run: |
           mkdir -p /tmp/frontend-deploy
           rsync -av --delete \
-            --exclude='node_modules' --exclude='.next' --exclude='.git' --exclude='.vercel' \
+            --exclude='node_modules' --exclude='.next' --exclude='.git' \
             --exclude='.github' --exclude='deploy' --exclude='tests' --exclude='docs' --exclude='coverage' \
             --exclude='.env' --exclude='.env.local' --exclude='.env.*.local' \
             --exclude='*.tsbuildinfo' --exclude='*.log' --exclude='*.backup' --exclude='.DS_Store' \

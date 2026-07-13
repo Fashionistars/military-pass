@@ -31,8 +31,7 @@ build
 .claude
 .agents
 
-# vercel / other platform configs (irrelevant to the HF Docker build)
-.vercel
+# other platform configs (irrelevant to the HF Docker build)
 apphosting.yaml
 railway.json
 render.yaml
