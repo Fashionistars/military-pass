@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const monitor = getPerformanceMonitor();
-  const report = monitor.getReport();
+  const report = monitor.getReport() as PerformanceReport;
   
   return NextResponse.json({
     success: true,
@@ -87,7 +87,18 @@ async function measureOperation(operation: string): Promise<void> {
   await new Promise(resolve => setTimeout(resolve, delay));
 }
 
-function generateRecommendations(report: any): string[] {
+interface OperationStats {
+  avgLatency: number;
+  errorRate: number;
+  count?: number;
+}
+
+interface PerformanceReport {
+  overall: OperationStats;
+  byOperation: Record<string, OperationStats>;
+}
+
+function generateRecommendations(report: PerformanceReport): string[] {
   const recommendations: string[] = [];
   const { overall, byOperation } = report;
 

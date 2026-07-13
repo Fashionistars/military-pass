@@ -17,14 +17,14 @@ interface SignalingMessage {
   type: 'offer' | 'answer' | 'ice-candidate' | 'leave';
   roomId: string;
   userId: string;
-  payload: any;
+  payload: unknown;
 }
 
 interface Room {
-  participants: Map<string, any>;
-  offers: Map<string, any>;
-  answers: Map<string, any>;
-  iceCandidates: Map<string, any[]>;
+  participants: Map<string, { joinedAt: number }>;
+  offers: Map<string, unknown>;
+  answers: Map<string, unknown>;
+  iceCandidates: Map<string, unknown[]>;
 }
 
 // In-memory room storage (in production, use Redis)
@@ -110,7 +110,7 @@ export async function GET(req: NextRequest) {
 /**
  * Handle SDP offer
  */
-function handleOffer(room: Room, userId: string, payload: any): Response {
+function handleOffer(room: Room, userId: string, payload: unknown): Response {
   // Store offer
   room.offers.set(userId, payload);
   room.participants.set(userId, { joinedAt: Date.now() });
@@ -134,7 +134,7 @@ function handleOffer(room: Room, userId: string, payload: any): Response {
 /**
  * Handle SDP answer
  */
-function handleAnswer(room: Room, userId: string, payload: any): Response {
+function handleAnswer(room: Room, userId: string, payload: unknown): Response {
   // Store answer
   room.answers.set(userId, payload);
 
@@ -149,7 +149,7 @@ function handleAnswer(room: Room, userId: string, payload: any): Response {
 /**
  * Handle ICE candidate
  */
-function handleIceCandidate(room: Room, userId: string, payload: any): Response {
+function handleIceCandidate(room: Room, userId: string, payload: unknown): Response {
   // Store ICE candidate
   if (!room.iceCandidates.has(userId)) {
     room.iceCandidates.set(userId, []);

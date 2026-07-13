@@ -52,7 +52,7 @@ export default function ForgotPasswordPage() {
               Check your inbox and follow the instructions.
             </p>
             <p className={styles.sub} style={{ fontSize: "0.8rem", marginTop: "8px" }}>
-              Didn't receive it? Check your spam folder or{" "}
+              Didn&apos;t receive it? Check your spam folder or{" "}
               <button
                 onClick={() => { setSent(false); setEmail(""); }}
                 className={styles.linkBtn}
