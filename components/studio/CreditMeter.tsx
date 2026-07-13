@@ -69,9 +69,11 @@ export default function CreditMeter({
           await fetch("/api/credits/balance", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ action: "deduct", amount: 1 }),
+            body:    JSON.stringify({ action: "deduct", amount: 1, sessionId }),
           });
-        } catch { /* silently fail */ }
+        } catch (err) {
+          console.warn("[CreditMeter] Failed to sync credit deduction:", err);
+        }
       }, DEDUCT_INTERVAL_MS);
 
       // Elapsed timer (every second)

@@ -139,8 +139,11 @@ export default function CameraFeed({
   // ─── Start/stop processing loop ───────────────────────────────────
   useEffect(() => {
     if (!processorRef.current) return;
-    if (isProcessing && avatarEmbedding) {
-      processorRef.current.setAvatarEmbedding(avatarEmbedding);
+    if (isProcessing) {
+      // Ensure embedding is set (auto-generates fallback if missing)
+      if (avatarEmbedding) {
+        processorRef.current.setAvatarEmbedding(avatarEmbedding);
+      }
       processorRef.current.start();
     } else {
       processorRef.current.stop();

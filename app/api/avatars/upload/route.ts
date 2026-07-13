@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
           user_id:        user.id,
           name,
           image_url:      imageUrl,
-          embedding:      JSON.stringify(embedding),
+          embedding:      embedding,
           is_preset:      false,
           enhanced:       !!storageData,  // flag: was GFPGAN applied?
         })

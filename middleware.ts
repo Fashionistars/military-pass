@@ -61,6 +61,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Protect /admin routes — redirect to admin login (separate from user login)
+  if (!user && request.nextUrl.pathname.startsWith("/admin") && !request.nextUrl.pathname.startsWith("/admin/login")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/admin/login";
+    return NextResponse.redirect(url);
+  }
+
   // Redirect logged-in users away from auth pages
   // Only redirect if user has a valid session (not just a user object)
   if (user && user.email && (
@@ -72,10 +79,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Redirect logged-in non-admin users away from admin login
+  if (user && user.email && request.nextUrl.pathname === "/admin/login") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/admin";
+    return NextResponse.redirect(url);
+  }
+
   return supabaseResponse;
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/auth/:path*", "/api/:path*"],
+  matcher: ["/dashboard/:path*", "/auth/:path*", "/api/:path*", "/admin/:path*"],
 };
 

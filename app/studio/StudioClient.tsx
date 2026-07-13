@@ -56,6 +56,11 @@ export default function StudioClient({ avatars, initialBalance, userId }: Studio
     if (!selectedAvatar) return;
     setStudioError(null);
 
+    // ── Warm up ZeroGPU before first frame ──────────────────────
+    try {
+      await fetch("/api/ai/warmup", { method: "POST" });
+    } catch { /* non-blocking — studio can still proceed */ }
+
     try {
       const res  = await fetch("/api/sessions", {
         method:  "POST",
@@ -67,7 +72,9 @@ export default function StudioClient({ avatars, initialBalance, userId }: Studio
       });
       const data = await res.json();
       if (data.session) setSessionId(data.session.id);
-    } catch { /* non-blocking */ }
+    } catch (err) {
+      console.error("[studio] Failed to create session:", err);
+    }
 
     sessionStartRef.current = Date.now();
     setIsRunning(true);
@@ -92,21 +99,28 @@ export default function StudioClient({ avatars, initialBalance, userId }: Studio
 
     if (sessionId) {
       const duration    = Math.floor((Date.now() - sessionStartRef.current) / 1000);
-      const creditsUsed = initialBalance - creditsLeft;
+      const creditsUsed = Math.max(0, initialBalance - creditsLeft);
 
-      await fetch("/api/sessions", {
-        method:  "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({
-          sessionId,
-          stats: {
-            duration_seconds: duration,
-            credits_used:     creditsUsed,
-            frames_processed: frameCountRef.current,
-            avg_latency_ms:   frameStats?.avgLatencyMs ?? 0,
-          },
-        }),
-      }).catch(() => {});
+      try {
+        const res = await fetch("/api/sessions", {
+          method:  "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({
+            sessionId,
+            stats: {
+              duration_seconds: duration,
+              credits_used:     creditsUsed,
+              frames_processed: frameCountRef.current,
+              avg_latency_ms:   frameStats?.avgLatencyMs ?? 0,
+            },
+          }),
+        });
+        if (!res.ok) {
+          console.error("[studio] Failed to end session:", res.status, await res.text().catch(() => ""));
+        }
+      } catch (err) {
+        console.error("[studio] Error ending session:", err);
+      }
 
       posthog.capture("studio_session_ended", {
         duration_seconds:  duration,
@@ -148,7 +162,7 @@ export default function StudioClient({ avatars, initialBalance, userId }: Studio
     }
   }, [userId]);
 
-  const isProcessing = isRunning && !isPaused && !!selectedAvatar?.embedding;
+  const isProcessing = isRunning && !isPaused;
 
   /* ── Render ──────────────────────────────────────────────────── */
   return (

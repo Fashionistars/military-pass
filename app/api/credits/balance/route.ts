@@ -28,11 +28,11 @@ export async function POST(request: NextRequest) {
     const user = await getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { action, amount } = await request.json();
+    const { action, amount, sessionId } = await request.json();
 
     // Input validation
     if (typeof amount !== "number" || amount <= 0 || amount > 10000) {
-      return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid amount. Must be a positive number up to 10000." }, { status: 400 });
     }
 
     const { createClient } = await import("@/lib/supabase/server");
@@ -44,18 +44,19 @@ export async function POST(request: NextRequest) {
         p_user_id: user.id,
         p_amount: amount,
         p_description: "Live transformation session",
+        p_session_id: sessionId ?? null,
       });
 
       if (rpcError) {
         console.error("[credits] RPC error:", rpcError);
-        return NextResponse.json({ error: rpcError.message }, { status: 500 });
+        return NextResponse.json({ error: "Failed to deduct credits. Please try again." }, { status: 500 });
       }
 
-      if (!result) {
-        return NextResponse.json({ error: "Insufficient credits" }, { status: 402 });
+      if (!result || !result.success) {
+        return NextResponse.json({ error: "Insufficient credits. Please top up to continue." }, { status: 402 });
       }
 
-      return NextResponse.json({ balance: result.new_balance });
+      return NextResponse.json({ balance: result.new_balance, success: true });
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });

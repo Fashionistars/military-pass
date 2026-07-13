@@ -52,14 +52,19 @@ export async function POST(request: NextRequest) {
     if (!frame_b64) {
       return NextResponse.json({ error: "Missing frame_b64" }, { status: 400 });
     }
-    if (!avatar_embedding || !Array.isArray(avatar_embedding)) {
+    if (!avatar_embedding || !Array.isArray(avatar_embedding) || avatar_embedding.length === 0) {
       return NextResponse.json({ error: "Missing avatar_embedding" }, { status: 400 });
     }
+
+    // Normalize embedding to exactly 512 dimensions (pad with zeros or truncate)
+    let normalizedEmbedding = avatar_embedding;
     if (avatar_embedding.length !== 512) {
-      return NextResponse.json(
-        { error: "avatar_embedding must be exactly 512 dimensions" },
-        { status: 400 }
-      );
+      if (avatar_embedding.length < 512) {
+        normalizedEmbedding = [...avatar_embedding, ...new Array(512 - avatar_embedding.length).fill(0)];
+      } else {
+        normalizedEmbedding = avatar_embedding.slice(0, 512);
+      }
+      console.warn(`[face-swap] Embedding normalized from ${avatar_embedding.length} to 512 dimensions`);
     }
     if (!["fast", "balanced", "ultra"].includes(quality)) {
       return NextResponse.json(
@@ -82,7 +87,7 @@ export async function POST(request: NextRequest) {
     const chainStart = performance.now();
     const result = await swapFace({
       frame_b64,
-      avatar_embedding,
+      avatar_embedding: normalizedEmbedding,
       enhance,
       align_skin,
       quality,

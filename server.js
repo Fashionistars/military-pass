@@ -24,6 +24,7 @@
  */
 
 const { createServer } = require("node:http");
+const https = require("node:https");
 const fs = require("node:fs");
 const path = require("node:path");
 const { WebSocketServer } = require("ws");
@@ -464,8 +465,27 @@ if (dev) {
 
 function boot() {
   const httpServer = createServer((req, res) => {
-    // Serve static files from /.next/static/ explicitly (fixes Turbopack chunk 404s)
     const url = new URL(req.url, `http://${req.headers.host}`);
+
+    // ── Proxy PostHog /ingest/ requests to us.posthog.com ──────────
+    if (url.pathname.startsWith("/ingest/")) {
+      const proxyUrl = `https://us.posthog.com${url.pathname}${url.search}`;
+      const proxyReq = https.request(proxyUrl, {
+        method: req.method,
+        headers: { ...req.headers, host: "us.posthog.com" },
+      }, (proxyRes) => {
+        res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+        proxyRes.pipe(res);
+      });
+      proxyReq.on("error", () => {
+        res.writeHead(502, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Analytics proxy failed" }));
+      });
+      req.pipe(proxyReq);
+      return;
+    }
+
+    // Serve static files from /.next/static/ explicitly (fixes Turbopack chunk 404s)
     if (url.pathname.startsWith("/_next/static/")) {
       const filePath = path.join(__dirname, ".next", "static", url.pathname.replace("/_next/static/", ""));
       if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {

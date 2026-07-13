@@ -30,14 +30,21 @@ export async function PATCH(request: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { sessionId, stats } = await request.json();
+
+    if (!sessionId) {
+      return NextResponse.json({ error: "Missing sessionId" }, { status: 400 });
+    }
+
     const result = await endSession(sessionId, stats);
 
     if ("error" in result) {
+      console.error("[sessions] endSession error:", result.error);
       return NextResponse.json({ error: result.error }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true });
-  } catch {
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+    return NextResponse.json({ success: true, final_balance: result.final_balance });
+  } catch (err) {
+    console.error("[sessions] PATCH error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

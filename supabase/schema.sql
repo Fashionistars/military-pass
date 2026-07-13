@@ -19,6 +19,7 @@ CREATE TABLE public.profiles (
   avatar_url      TEXT,
   bio             TEXT,
   website         TEXT,
+  is_admin        BOOLEAN DEFAULT FALSE,
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
@@ -264,7 +265,8 @@ CREATE TRIGGER on_auth_user_created
 CREATE OR REPLACE FUNCTION public.deduct_credits(
   p_user_id UUID,
   p_amount INTEGER,
-  p_description TEXT DEFAULT NULL
+  p_description TEXT DEFAULT NULL,
+  p_session_id UUID DEFAULT NULL
 )
 RETURNS TABLE (
   success BOOLEAN,
@@ -307,16 +309,102 @@ BEGIN
     amount,
     tx_type,
     balance_after,
-    description
+    description,
+    session_id
   ) VALUES (
     p_user_id,
     -p_amount,
     'deduction',
     new_balance_val,
-    COALESCE(p_description, 'Credit deduction')
+    COALESCE(p_description, 'Credit deduction'),
+    p_session_id
   );
 
   RETURN QUERY SELECT TRUE, new_balance_val::INTEGER;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ──────────────────────────────────────────
+-- 11b. ATOMIC SESSION END RPC
+-- ──────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.end_session_atomic(
+  p_session_id UUID,
+  p_user_id UUID,
+  p_duration_seconds INTEGER DEFAULT 0,
+  p_credits_used INTEGER DEFAULT 0,
+  p_frames_processed INTEGER DEFAULT 0,
+  p_avg_latency_ms NUMERIC DEFAULT 0
+)
+RETURNS TABLE (
+  success BOOLEAN,
+  session_id UUID,
+  final_balance INTEGER
+) AS $$
+DECLARE
+  current_balance INTEGER;
+  new_balance_val INTEGER;
+  session_exists BOOLEAN;
+BEGIN
+  -- Check session exists and belongs to user
+  SELECT EXISTS(
+    SELECT 1 FROM public.transform_sessions
+    WHERE id = p_session_id AND user_id = p_user_id
+  ) INTO session_exists;
+
+  IF NOT session_exists THEN
+    RETURN QUERY SELECT FALSE, NULL::UUID, 0::INTEGER;
+    RETURN;
+  END IF;
+
+  -- Get current balance with row lock
+  SELECT balance INTO current_balance
+  FROM public.credits
+  WHERE user_id = p_user_id
+  FOR UPDATE;
+
+  new_balance_val := COALESCE(current_balance, 0);
+
+  -- Deduct credits if any were used
+  IF p_credits_used > 0 AND current_balance >= p_credits_used THEN
+    new_balance_val := current_balance - p_credits_used;
+
+    UPDATE public.credits
+    SET
+      balance = new_balance_val,
+      total_used = total_used + p_credits_used,
+      updated_at = NOW()
+    WHERE user_id = p_user_id;
+
+    -- Log transaction
+    INSERT INTO public.credit_transactions (
+      user_id,
+      amount,
+      tx_type,
+      balance_after,
+      description,
+      session_id
+    ) VALUES (
+      p_user_id,
+      -p_credits_used,
+      'deduction',
+      new_balance_val,
+      'Session ended — ' || p_duration_seconds || 's duration',
+      p_session_id
+    );
+  END IF;
+
+  -- Update session record
+  UPDATE public.transform_sessions
+  SET
+    status = 'ended',
+    ended_at = NOW(),
+    duration_seconds = p_duration_seconds,
+    credits_used = p_credits_used,
+    frames_processed = p_frames_processed,
+    avg_latency_ms = p_avg_latency_ms
+  WHERE id = p_session_id;
+
+  RETURN QUERY SELECT TRUE, p_session_id, new_balance_val::INTEGER;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

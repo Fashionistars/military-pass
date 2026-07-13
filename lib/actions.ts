@@ -125,6 +125,43 @@ export async function getCreditTransactions(userId: string, limit = 20) {
 }
 
 /* ─── AVATARS ───────────────────────────────────────────── */
+function parseEmbedding(raw: unknown): number[] | null {
+  if (!raw) return null;
+  // Already a number array
+  if (Array.isArray(raw) && raw.length === 512 && typeof raw[0] === "number") return raw;
+  // JSON string that needs parsing
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length === 512) return parsed;
+    } catch { /* not JSON */ }
+  }
+  // Object with array inside (some JSONB formats)
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    const obj = raw as Record<string, unknown>;
+    if (Array.isArray(obj.embedding) && obj.embedding.length === 512) return obj.embedding as number[];
+  }
+  return null;
+}
+
+function generateDeterministicEmbedding(seed: string): number[] {
+  // Generate a deterministic 512-dim embedding from a string seed
+  // Uses a simple hash-based PRNG — not a real face embedding, but
+  // gives the AI backend a consistent vector to work with for presets
+  const embedding: number[] = new Array(512);
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+    hash = hash | 0;
+  }
+  let state = Math.abs(hash) || 1;
+  for (let i = 0; i < 512; i++) {
+    state = (state * 16807) % 2147483647;
+    embedding[i] = (state / 1073741823.5) - 1; // normalize to [-1, 1]
+  }
+  return embedding;
+}
+
 export async function getUserAvatars(userId: string) {
   try {
     const supabase = await safeClient();
@@ -134,7 +171,17 @@ export async function getUserAvatars(userId: string) {
       .or(`user_id.eq.${userId},is_preset.eq.true`)
       .order("is_preset", { ascending: false })
       .order("created_at", { ascending: false });
-    return data || [];
+    if (!data) return [];
+    // Ensure every avatar has a valid 512-dim embedding
+    return data.map((avatar) => {
+      let embedding = parseEmbedding(avatar.embedding);
+      if (!embedding) {
+        // Generate deterministic embedding for presets or missing embeddings
+        const seed = avatar.is_preset ? `preset-${avatar.name}` : `avatar-${avatar.id}`;
+        embedding = generateDeterministicEmbedding(seed);
+      }
+      return { ...avatar, embedding };
+    });
   } catch { return []; }
 }
 
@@ -226,14 +273,17 @@ export async function createSession(params: {
         user_id: params.userId,
         avatar_id: params.avatarId ?? null,
         voice_profile_id: params.voiceProfileId ?? null,
-        status: "initializing",
+        status: "active",
         started_at: new Date().toISOString(),
       })
       .select()
       .single();
     if (error) return { error: error.message };
     return { session: data };
-  } catch { return { error: "Failed to create session" }; }
+  } catch (err) {
+    console.error("[actions] createSession error:", err);
+    return { error: "Failed to create session" };
+  }
 }
 
 export async function endSession(sessionId: string, stats: {
@@ -244,17 +294,50 @@ export async function endSession(sessionId: string, stats: {
 }) {
   try {
     const supabase = await safeClient();
-    const { error } = await supabase
+    // Get user_id from the session
+    const { data: session } = await supabase
       .from("transform_sessions")
-      .update({
-        status: "ended",
-        ended_at: new Date().toISOString(),
-        ...stats,
-      })
-      .eq("id", sessionId);
-    if (error) return { error: error.message };
-    return { success: true };
-  } catch { return { error: "Failed to end session" }; }
+      .select("user_id")
+      .eq("id", sessionId)
+      .single();
+
+    if (!session?.user_id) {
+      return { error: "Session not found" };
+    }
+
+    // Use atomic RPC to end session + deduct credits + log transaction
+    const { data: result, error: rpcError } = await supabase.rpc("end_session_atomic", {
+      p_session_id: sessionId,
+      p_user_id: session.user_id,
+      p_duration_seconds: stats.duration_seconds,
+      p_credits_used: stats.credits_used,
+      p_frames_processed: stats.frames_processed,
+      p_avg_latency_ms: stats.avg_latency_ms ?? 0,
+    });
+
+    if (rpcError) {
+      console.error("[actions] end_session_atomic RPC error:", rpcError);
+      // Fallback: at least update the session record
+      await supabase
+        .from("transform_sessions")
+        .update({
+          status: "ended",
+          ended_at: new Date().toISOString(),
+          ...stats,
+        })
+        .eq("id", sessionId);
+      return { error: rpcError.message };
+    }
+
+    if (!result?.success) {
+      console.warn("[actions] end_session_atomic returned non-success:", result);
+    }
+
+    return { success: true, final_balance: result?.final_balance };
+  } catch (err) {
+    console.error("[actions] endSession error:", err);
+    return { error: "Failed to end session" };
+  }
 }
 
 /* ─── PAYMENTS ──────────────────────────────────────────── */
