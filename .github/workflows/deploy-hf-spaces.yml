@@ -1,25 +1,8 @@
-# =============================================================================
+﻿# =============================================================================
 # MILITARY PASS — Auto-Deploy to Hugging Face Spaces
 # =============================================================================
-
 # Deploys: AI Engine (Gradio ZeroGPU) + Frontend (Docker) to HF Spaces.
-# Required secrets: HF_TOKEN, HF_USER. Uses git push for LFS reliability.
-# ==============================================================================
-
-# Triggers on push to `main` branch. Deploys two HF Spaces in parallel:
-#
-#   1. AI Engine Space  (fashionistar/military-pass-ai, Gradio ZeroGPU)
-#      — syncs deploy/huggingface-ai-engine/ contents
-#
-#   2. Frontend Space   (fashionistar/military-pass-frontend, Docker)
-#      — syncs the full Next.js repo (excluding dev artifacts)
-#
-# Required GitHub Secrets:
-#   HF_TOKEN              — Hugging Face write token
-#   HF_USER               — HF username (fashionistar)
-#
-# The workflow uses git push (not the Python SDK) for reliability with
-# large repos and automatic Git LFS handling.
+# Required secrets: HF_TOKEN. Uses huggingface_hub API (not git) for uploads.
 # ==============================================================================
 name: Deploy to Hugging Face Spaces
 
@@ -37,86 +20,57 @@ env:
   HF_FRONTEND_SPACE: fashionistar/military-pass-frontend
 
 jobs:
-  # ─────────────────────────────────────────────────────────────────────────
-  # Job 1: Deploy AI Engine (Gradio ZeroGPU Space)
-  # ─────────────────────────────────────────────────────────────────────────
   deploy-ai-engine:
     name: Deploy AI Engine Space
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          fetch-depth: 0
-          lfs: true
+          python-version: '3.12'
 
-      - name: Configure Git
-        run: |
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "github-actions[bot]"
+      - name: Install huggingface_hub
+        run: pip install huggingface_hub
 
-      - name: Clone AI Space repo
+      - name: Upload AI engine files to HF Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git clone "https://oauth2:${HF_TOKEN}@huggingface.co/spaces/${HF_AI_SPACE}" /tmp/ai-space
+          python -c "
+          from huggingface_hub import HfApi
+          import os
+          api = HfApi(token=os.environ['HF_TOKEN'])
+          api.upload_folder(
+              folder_path='deploy/huggingface-ai-engine',
+              repo_id='${HF_AI_SPACE}',
+              repo_type='space',
+              commit_message='Auto-deploy from GitHub: ${GITHUB_SHA::7}',
+              delete_patterns='*',
+          )
+          print('AI Engine deployed to ${HF_AI_SPACE}')
+          "
 
-      - name: Sync AI engine files
-        run: |
-          # Clear existing files (keep .git and .gitattributes)
-          cd /tmp/ai-space
-          find . -maxdepth 1 ! -name '.' ! -name '.git' ! -name '.gitattributes' -exec rm -rf {} +
-
-          # Copy AI engine files from deploy/huggingface-ai-engine/
-          cp -r "${GITHUB_WORKSPACE}/deploy/huggingface-ai-engine/"* .
-          cp "${GITHUB_WORKSPACE}/deploy/huggingface-ai-engine/.gitattributes" . 2>/dev/null || true
-
-          # Ensure Git LFS is set up for binary files
-          git lfs install
-          git lfs track "*.bin" "*.pt" "*.pth" "*.onnx" "*.safetensors" "*.png" "*.jpg"
-          git add .gitattributes
-
-      - name: Commit and push AI Space
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          cd /tmp/ai-space
-          git add -A
-          git diff --staged --quiet && echo "No changes to AI Space" && exit 0
-          git commit -m "Auto-deploy from GitHub: ${GITHUB_SHA::7}"
-          git push "https://oauth2:${HF_TOKEN}@huggingface.co/spaces/${HF_AI_SPACE}" main
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # Job 2: Deploy Frontend (Docker Space)
-  # ─────────────────────────────────────────────────────────────────────────
   deploy-frontend:
     name: Deploy Frontend Space
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          fetch-depth: 0
-          lfs: true
+          python-version: '3.12'
 
-      - name: Configure Git
+      - name: Install huggingface_hub
+        run: pip install huggingface_hub
+
+      - name: Prepare frontend files
         run: |
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "github-actions[bot]"
-
-      - name: Clone Frontend Space repo
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          git clone "https://oauth2:${HF_TOKEN}@huggingface.co/spaces/${HF_FRONTEND_SPACE}" /tmp/frontend-space
-
-      - name: Sync frontend files
-        run: |
-          # Clear existing files (keep .git and .gitattributes)
-          cd /tmp/frontend-space
-          find . -maxdepth 1 ! -name '.' ! -name '.git' ! -name '.gitattributes' -exec rm -rf {} +
-
-          # Copy all project files, excluding dev artifacts
+          mkdir -p /tmp/frontend-deploy
           rsync -av --delete \
             --exclude='node_modules' --exclude='.next' --exclude='.git' --exclude='.vercel' \
             --exclude='.github' --exclude='deploy' --exclude='tests' --exclude='docs' --exclude='coverage' \
@@ -126,42 +80,41 @@ jobs:
             --exclude='nixpacks.toml' --exclude='apphosting.yaml' \
             --exclude='railway.json' --exclude='render.yaml' \
             --exclude='test_db.js' --exclude='test_tables.js' \
-            "${GITHUB_WORKSPACE}/" .
+            --exclude='UNIFICATION-CHANGELOG.md' --exclude='.env.example' \
+            --exclude='skills-lock.json' \
+            "${GITHUB_WORKSPACE}/" /tmp/frontend-deploy/
+          cp "${GITHUB_WORKSPACE}/deploy/huggingface-frontend/README.md" /tmp/frontend-deploy/README.md
 
-          # Overwrite README with HF Space card
-          cp "${GITHUB_WORKSPACE}/deploy/huggingface-frontend/README.md" README.md
-
-          # Ensure Git LFS is set up for binary assets
-          git lfs install
-          git lfs track "*.png" "*.jpg" "*.jpeg" "*.gif" "*.svg" "*.ico" "*.webp"
-          git add .gitattributes
-
-      - name: Commit and push Frontend Space
+      - name: Upload frontend files to HF Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          cd /tmp/frontend-space
-          git add -A
-          git diff --staged --quiet && echo "No changes to Frontend Space" && exit 0
-          git commit -m "Auto-deploy from GitHub: ${GITHUB_SHA::7}"
-          git push "https://oauth2:${HF_TOKEN}@huggingface.co/spaces/${HF_FRONTEND_SPACE}" main
+          python -c "
+          from huggingface_hub import HfApi
+          import os
+          api = HfApi(token=os.environ['HF_TOKEN'])
+          api.upload_folder(
+              folder_path='/tmp/frontend-deploy',
+              repo_id='${HF_FRONTEND_SPACE}',
+              repo_type='space',
+              commit_message='Auto-deploy from GitHub: ${GITHUB_SHA::7}',
+              delete_patterns='*',
+          )
+          print('Frontend deployed to ${HF_FRONTEND_SPACE}')
+          "
 
       - name: Output deployment URLs
         run: |
           echo "Frontend: https://fashionistar-military-pass-frontend.hf.space"
           echo "AI Engine: https://fashionistar-military-pass-ai.hf.space"
 
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # Job 3: Post-deploy health check
-  # ─────────────────────────────────────────────────────────────────────────
   health-check:
     name: Health Check
     runs-on: ubuntu-latest
     needs: [deploy-ai-engine, deploy-frontend]
     steps:
       - name: Wait for HF Spaces to boot
-        run: sleep 30
+        run: sleep 60
 
       - name: Check Frontend Space is live
         run: |
