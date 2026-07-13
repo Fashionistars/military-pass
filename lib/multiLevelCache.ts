@@ -49,7 +49,7 @@ export class ServiceWorkerCache {
     maxSize: 0,
   };
   
-  constructor(config: CacheConfig = {}) {
+  constructor(config: Partial<CacheConfig> = {}) {
     this.config = {
       maxSize: config.maxSize || 100,
       defaultTTL: config.defaultTTL || 300000, // 5 minutes
@@ -189,7 +189,7 @@ export class EdgeCache {
     maxSize: 0,
   };
   
-  constructor(config: CacheConfig = {}) {
+  constructor(config: Partial<CacheConfig> = {}) {
     this.config = {
       maxSize: config.maxSize || 500,
       defaultTTL: config.defaultTTL || 60000, // 1 minute
@@ -328,7 +328,7 @@ export class RegionalCache {
     maxSize: 0,
   };
   
-  constructor(config: CacheConfig = {}) {
+  constructor(config: Partial<CacheConfig> = {}) {
     this.config = {
       maxSize: config.maxSize || 1000,
       defaultTTL: config.defaultTTL || 180000, // 3 minutes
@@ -446,7 +446,7 @@ export class GlobalCache {
     maxSize: 0,
   };
   
-  constructor(config: CacheConfig = {}) {
+  constructor(config: Partial<CacheConfig> = {}) {
     this.config = {
       maxSize: config.maxSize || 5000,
       defaultTTL: config.defaultTTL || 600000, // 10 minutes
@@ -566,10 +566,10 @@ export class MultiLevelCacheManager {
     l3?: CacheConfig;
     l4?: CacheConfig;
   }) {
-    this.l1Cache = new ServiceWorkerCache(config.l1 || {});
-    this.l2Cache = new EdgeCache(config.l2 || {});
-    this.l3Cache = new RegionalCache(config.l3 || {});
-    this.l4Cache = new GlobalCache(config.l4 || {});
+    this.l1Cache = new ServiceWorkerCache(config.l1);
+    this.l2Cache = new EdgeCache(config.l2);
+    this.l3Cache = new RegionalCache(config.l3);
+    this.l4Cache = new GlobalCache(config.l4);
   }
   
   /**
@@ -649,8 +649,8 @@ export class MultiLevelCacheManager {
   async invalidatePattern(pattern: string): Promise<number> {
     const l1Invalidated = this.l1Cache.invalidatePattern(pattern);
     const l2Invalidated = await this.l2Cache.invalidatePattern(pattern);
-    const l3Invalidated = await this.l3Cache.delete(pattern) as number;
-    const l4Invalidated = await this.l4Cache.delete(pattern) as number;
+    const l3Invalidated = await this.l3Cache.delete(pattern) ? 1 : 0;
+    const l4Invalidated = await this.l4Cache.delete(pattern) ? 1 : 0;
     
     return l1Invalidated + l2Invalidated + l3Invalidated + l4Invalidated;
   }

@@ -44,9 +44,9 @@ export class WebRTCClient {
   private config: Required<WebRTCConfig>;
   
   // Callbacks
-  private onStateChange: ConnectionStateCallback[] = [];
-  private onTrack: TrackCallback[] = [];
-  private onIceCandidate: IceCandidateCallback[] = [];
+  private stateChangeCallbacks: ConnectionStateCallback[] = [];
+  private trackCallbacks: TrackCallback[] = [];
+  private iceCandidateCallbacks: IceCandidateCallback[] = [];
   
   // Statistics
   private statsInterval: NodeJS.Timeout | null = null;
@@ -268,21 +268,21 @@ export class WebRTCClient {
    * Register state change callback
    */
   onStateChange(callback: ConnectionStateCallback): void {
-    this.onStateChange.push(callback);
+    this.stateChangeCallbacks.push(callback);
   }
   
   /**
    * Register track callback
    */
   onTrack(callback: TrackCallback): void {
-    this.onTrack.push(callback);
+    this.trackCallbacks.push(callback);
   }
   
   /**
    * Register ICE candidate callback
    */
   onIceCandidate(callback: IceCandidateCallback): void {
-    this.onIceCandidate.push(callback);
+    this.iceCandidateCallbacks.push(callback);
   }
   
   // Private methods
@@ -356,15 +356,15 @@ export class WebRTCClient {
   }
   
   private _notifyStateChange(state: RTCPeerConnectionState): void {
-    this.onStateChange.forEach(callback => callback(state));
+    this.stateChangeCallbacks.forEach(callback => callback(state));
   }
   
   private _notifyTrack(track: MediaStreamTrack, stream: MediaStream): void {
-    this.onTrack.forEach(callback => callback(track, stream));
+    this.trackCallbacks.forEach(callback => callback(track, stream));
   }
   
   private _notifyIceCandidate(candidate: RTCIceCandidate): void {
-    this.onIceCandidate.forEach(callback => callback(candidate));
+    this.iceCandidateCallbacks.forEach(callback => callback(candidate));
   }
   
   private _stopStatsMonitoring(): void {

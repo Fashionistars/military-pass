@@ -5,16 +5,23 @@
  * Replaces deprecated ScriptProcessorNode for better performance and future compatibility.
  */
 
-class AudioWorkletProcessor extends AudioWorkletProcessor {
+declare class AudioWorkletProcessor {
+  readonly port: MessagePort;
+  constructor(options?: AudioWorkletNodeOptions);
+  process(inputs: Float32Array[][], outputs: Float32Array[][], parameters: Record<string, Float32Array>): boolean;
+}
+declare function registerProcessor(name: string, processorCtor: { new (options?: AudioWorkletNodeOptions): AudioWorkletProcessor }): void;
+
+class AudioChunkProcessor extends AudioWorkletProcessor {
   private sampleRate: number = 16000;
   private chunkSamples: number = 3200; // 200ms at 16kHz
   private buffer: Float32Array | null = null;
   private bufferIndex: number = 0;
 
-  constructor(options: AudioWorkletNodeOptions) {
+  constructor(options?: AudioWorkletNodeOptions) {
     super(options);
     
-    if (options.processorOptions) {
+    if (options?.processorOptions) {
       this.sampleRate = options.processorOptions.sampleRate || 16000;
       this.chunkSamples = Math.floor(this.sampleRate * 0.2); // 200ms chunks
     }
@@ -68,4 +75,4 @@ class AudioWorkletProcessor extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor('audio-worklet-processor', AudioWorkletProcessor);
+registerProcessor('audio-worklet-processor', AudioChunkProcessor);

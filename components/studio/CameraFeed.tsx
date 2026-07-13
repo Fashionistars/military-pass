@@ -44,6 +44,7 @@ export default function CameraFeed({
   const [camError, setCamError] = useState<string | null>(null);
   const [stats,    setStats]    = useState<FrameStats>({
     fps: 0, avgLatencyMs: 0, frameCount: 0, droppedFrames: 0, isProcessing: false,
+    cacheHitRate: 0, adaptiveQuality: "balanced",
   });
 
   const res = RESOLUTIONS[resolution];

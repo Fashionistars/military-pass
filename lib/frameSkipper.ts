@@ -39,7 +39,7 @@ export class AdaptiveFrameSkipper {
   private processCount = 0;
   private avgLatency = 0;
   
-  constructor(config: FrameSkipperConfig = {}) {
+  constructor(config: Partial<FrameSkipperConfig> = {}) {
     this.config = {
       targetLatency: config.targetLatency || 10, // 10ms target
       maxSkipRate: config.maxSkipRate || 0.5, // Max 50% skip rate
