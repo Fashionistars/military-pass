@@ -57,16 +57,6 @@ const nextConfig = {
   experimental: {
     serverActions: { bodySizeLimit: "6mb" },
   },
-
-  // ── Rewrite PostHog ingest routes to avoid 404 errors ─────
-  async rewrites() {
-    return [
-      {
-        source: "/ingest/:path*",
-        destination: "https://us.posthog.com/:path*",
-      },
-    ];
-  },
 };
 
 // Wrap Next.js config with Sentry error monitoring integration.

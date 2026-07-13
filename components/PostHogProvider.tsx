@@ -11,7 +11,6 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
 
     if (typeof window !== "undefined") {
       const token = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
-      const host = process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.posthog.com";
 
       if (!token) {
         console.warn("[PostHog] No project token found — analytics disabled");
@@ -19,7 +18,7 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
       }
 
       posthog.init(token, {
-        api_host: host,
+        api_host: "https://us.posthog.com",
         autocapture: false,
         disable_session_recording: true,
         capture_exceptions: false,
