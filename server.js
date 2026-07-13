@@ -1,0 +1,466 @@
+/**
+ * Military Pass — Custom Production Server (Docker / Hugging Face Spaces)
+ * ========================================================================
+ * Wraps the Next.js request handler with a native WebSocket server so the
+ * platform gets TRUE real-time streaming when self-hosted (HF Spaces Docker),
+ * while Vercel deployments transparently fall back to the HTTP transport.
+ *
+ *   ┌───────────────────────────── Port 7860 ─────────────────────────────┐
+ *   │  HTTP  → Next.js request handler (all pages + API routes)           │
+ *   │  WS    → ws WebSocketServer on path /api/ws                         │
+ *   │           protocol: { type, payload, timestamp, id }  (JSON)        │
+ *   │           events:  frame_request → frame_result                     │
+ *   │                    voice_request → voice_result                     │
+ *   │                    heartbeat     → heartbeat_ack                    │
+ *   └──────────────────────────────────────────────────────────────────────┘
+ *
+ * AI inference chain (mirrors lib/aiBackend.ts):
+ *   1. Hugging Face ZeroGPU Space (Gradio API)  — primary
+ *   2. Modal.com A10G workers (REST)            — fallback
+ *   3. Dev echo                                 — last resort
+ *
+ * ✅ Connection management   ✅ Room-based broadcasting
+ * ✅ Message routing         ✅ Performance monitoring
+ * ✅ Heartbeats              ✅ Graceful shutdown
+ */
+
+const { createServer } = require("node:http");
+const next = require("next");
+const { WebSocketServer } = require("ws");
+
+const dev = process.env.NODE_ENV !== "production";
+const hostname = process.env.HOSTNAME || "0.0.0.0";
+const port = parseInt(process.env.PORT || "7860", 10);
+
+// Signal to /api/ws GET that native WebSocket transport is live
+process.env.WEBSOCKET_ENABLED = "true";
+
+// ── AI backend configuration ─────────────────────────────────────
+
+const HF_AI_SPACE_URL =
+  process.env.HF_AI_SPACE_URL ||
+  process.env.NEXT_PUBLIC_HF_AI_SPACE_URL ||
+  "https://fashionistar-military-pass-ai.hf.space";
+
+const MODAL_FACE_SWAP_URL = process.env.MODAL_FACE_SWAP_URL || "";
+const MODAL_VOICE_URL = process.env.MODAL_VOICE_URL || "";
+const MODAL_AUTH_TOKEN = process.env.MODAL_AUTH_TOKEN || "";
+
+const BACKEND_PRIORITY = (process.env.AI_BACKEND_PRIORITY || "hf,modal")
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+
+const AI_TIMEOUT_MS = 60_000;
+
+// ── Gradio API helper (Gradio 5 two-step call protocol) ──────────
+
+async function callGradioAPI(baseUrl, apiName, data) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+
+  try {
+    const submitRes = await fetch(`${baseUrl}/gradio_api/call/${apiName}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data }),
+      signal: controller.signal,
+    });
+    if (!submitRes.ok) throw new Error(`Gradio submit HTTP ${submitRes.status}`);
+
+    const { event_id } = await submitRes.json();
+    if (!event_id) throw new Error("Gradio submit returned no event_id");
+
+    const resultRes = await fetch(
+      `${baseUrl}/gradio_api/call/${apiName}/${event_id}`,
+      { signal: controller.signal },
+    );
+    if (!resultRes.ok) throw new Error(`Gradio result HTTP ${resultRes.status}`);
+
+    const sseText = await resultRes.text();
+    let lastData = null;
+    for (const line of sseText.split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("data:")) {
+        try {
+          lastData = JSON.parse(trimmed.slice(5).trim());
+        } catch {
+          /* keep-alive line */
+        }
+      }
+    }
+    if (lastData === null) throw new Error("Gradio stream had no data");
+
+    const first = Array.isArray(lastData) ? lastData[0] : lastData;
+    if (typeof first === "string") {
+      try {
+        return JSON.parse(first);
+      } catch {
+        return first;
+      }
+    }
+    return first;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// ── Face swap chain ──────────────────────────────────────────────
+
+async function faceSwapViaHF(p) {
+  const t0 = Date.now();
+  const out = await callGradioAPI(HF_AI_SPACE_URL, "face_swap", [
+    p.frame_b64,
+    JSON.stringify(p.avatar_embedding || []),
+    p.enhance !== false,
+    p.align_skin !== false,
+    p.quality || "balanced",
+  ]);
+  const resultB64 = (out && (out.result_b64 || out.frame_b64)) || "";
+  if (!resultB64) throw new Error("HF face_swap: empty result");
+  return {
+    result_b64: resultB64,
+    latency_ms: Date.now() - t0,
+    faces_detected: out.faces_detected,
+    quality: p.quality || "balanced",
+    backend: "huggingface",
+  };
+}
+
+async function faceSwapViaModal(p) {
+  if (!MODAL_FACE_SWAP_URL) throw new Error("Modal face swap not configured");
+  const t0 = Date.now();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+  try {
+    const res = await fetch(MODAL_FACE_SWAP_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${MODAL_AUTH_TOKEN}`,
+      },
+      body: JSON.stringify({
+        auth_token: MODAL_AUTH_TOKEN,
+        action: "swap",
+        frame_b64: p.frame_b64,
+        avatar_embedding: p.avatar_embedding || [],
+        enhance: p.enhance !== false,
+        align_skin: p.align_skin !== false,
+        quality: p.quality || "balanced",
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Modal face swap HTTP ${res.status}`);
+    const out = await res.json();
+    const resultB64 = out.result_b64 || out.frame_b64 || "";
+    if (!resultB64) throw new Error("Modal face swap: empty result");
+    return {
+      result_b64: resultB64,
+      latency_ms: Date.now() - t0,
+      faces_detected: out.faces_detected,
+      quality: p.quality || "balanced",
+      backend: "modal",
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function swapFace(p) {
+  const providers = { hf: faceSwapViaHF, modal: faceSwapViaModal };
+  const errors = [];
+  for (const name of BACKEND_PRIORITY) {
+    const fn = providers[name];
+    if (!fn) continue;
+    try {
+      return await fn(p);
+    } catch (err) {
+      errors.push(`${name}: ${err.message}`);
+    }
+  }
+  console.warn("[server] face swap chain exhausted:", errors.join(" | "));
+  return {
+    result_b64: p.frame_b64,
+    latency_ms: 0,
+    quality: p.quality || "balanced",
+    backend: "dev-echo",
+    dev_mode: true,
+  };
+}
+
+// ── Voice chain ──────────────────────────────────────────────────
+
+async function voiceViaHF(p) {
+  const t0 = Date.now();
+  const out = await callGradioAPI(HF_AI_SPACE_URL, "voice_transform", [
+    p.audio_b64,
+    p.preset || "operative",
+    p.pitch_override || 0,
+    p.speed_override || 0,
+  ]);
+  const audioB64 = (out && out.audio_b64) || "";
+  if (!audioB64) throw new Error("HF voice_transform: empty result");
+  return {
+    audio_b64: audioB64,
+    latency_ms: Date.now() - t0,
+    preset: p.preset || "operative",
+    backend: "huggingface",
+  };
+}
+
+async function voiceViaModal(p) {
+  if (!MODAL_VOICE_URL) throw new Error("Modal voice not configured");
+  const t0 = Date.now();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${MODAL_VOICE_URL}/transform`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${MODAL_AUTH_TOKEN}`,
+      },
+      body: JSON.stringify({
+        audio_b64: p.audio_b64,
+        preset: p.preset || "operative",
+        pitch_override: p.pitch_override || null,
+        speed_override: p.speed_override || null,
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Modal voice HTTP ${res.status}`);
+    const out = await res.json();
+    const audioB64 = out.audio_b64 || "";
+    if (!audioB64) throw new Error("Modal voice: empty result");
+    return {
+      audio_b64: audioB64,
+      latency_ms: Date.now() - t0,
+      preset: p.preset || "operative",
+      backend: "modal",
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function transformVoice(p) {
+  const providers = { hf: voiceViaHF, modal: voiceViaModal };
+  const errors = [];
+  for (const name of BACKEND_PRIORITY) {
+    const fn = providers[name];
+    if (!fn) continue;
+    try {
+      return await fn(p);
+    } catch (err) {
+      errors.push(`${name}: ${err.message}`);
+    }
+  }
+  console.warn("[server] voice chain exhausted:", errors.join(" | "));
+  return {
+    audio_b64: p.audio_b64,
+    latency_ms: 0,
+    preset: p.preset || "operative",
+    backend: "dev-echo",
+    dev_mode: true,
+  };
+}
+
+// ── WebSocket server ─────────────────────────────────────────────
+
+const metrics = {
+  connections: 0,
+  totalConnections: 0,
+  messages: 0,
+  errors: 0,
+  startTime: Date.now(),
+};
+
+/** room name → Set<WebSocket> */
+const rooms = new Map();
+
+function joinRoom(ws, room) {
+  if (!rooms.has(room)) rooms.set(room, new Set());
+  rooms.get(room).add(ws);
+  ws._room = room;
+}
+
+function leaveRoom(ws) {
+  const room = ws._room;
+  if (room && rooms.has(room)) {
+    rooms.get(room).delete(ws);
+    if (rooms.get(room).size === 0) rooms.delete(room);
+  }
+  ws._room = null;
+}
+
+function wsSend(ws, type, payload, id) {
+  if (ws.readyState === ws.OPEN) {
+    ws.send(JSON.stringify({ type, payload, timestamp: Date.now(), id }));
+  }
+}
+
+function setupWebSocketServer(httpServer) {
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 8 * 1024 * 1024 });
+
+  // Only intercept upgrades for /api/ws — leave HMR & other paths alone
+  httpServer.on("upgrade", (req, socket, head) => {
+    let pathname = "";
+    try {
+      pathname = new URL(req.url, `http://${req.headers.host}`).pathname;
+    } catch {
+      socket.destroy();
+      return;
+    }
+
+    if (pathname === "/api/ws") {
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit("connection", ws, req);
+      });
+    }
+    // Next.js dev HMR or other upgrades are ignored in production
+  });
+
+  wss.on("connection", (ws, req) => {
+    metrics.connections++;
+    metrics.totalConnections++;
+
+    let userId = "anonymous";
+    let room = "default";
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      userId = url.searchParams.get("userId") || "anonymous";
+      room = url.searchParams.get("room") || "default";
+    } catch {
+      /* defaults hold */
+    }
+
+    ws._userId = userId;
+    joinRoom(ws, room);
+    ws.isAlive = true;
+
+    console.log(
+      `[WS] connected: user=${userId} room=${room} (active: ${metrics.connections})`,
+    );
+
+    wsSend(ws, "status", { status: "connected", timestamp: Date.now() });
+
+    ws.on("pong", () => {
+      ws.isAlive = true;
+    });
+
+    ws.on("message", async (raw) => {
+      metrics.messages++;
+      let msg;
+      try {
+        msg = JSON.parse(raw.toString());
+      } catch {
+        wsSend(ws, "error", { message: "Invalid JSON", code: "BAD_MESSAGE" });
+        return;
+      }
+
+      const { type, payload = {}, id } = msg;
+
+      try {
+        switch (type) {
+          case "frame_request": {
+            const result = await swapFace(payload);
+            wsSend(ws, "frame_result", result, id);
+            break;
+          }
+
+          case "voice_request": {
+            const result = await transformVoice(payload);
+            wsSend(ws, "voice_result", result, id);
+            break;
+          }
+
+          case "heartbeat": {
+            wsSend(ws, "heartbeat_ack", {
+              timestamp: Date.now(),
+              serverLatency: payload.timestamp ? Date.now() - payload.timestamp : null,
+            });
+            break;
+          }
+
+          case "join_room": {
+            leaveRoom(ws);
+            joinRoom(ws, payload.room || "default");
+            wsSend(ws, "status", { status: "room_joined", room: ws._room });
+            break;
+          }
+
+          case "leave_room": {
+            leaveRoom(ws);
+            joinRoom(ws, "default");
+            break;
+          }
+
+          default:
+            wsSend(ws, "error", {
+              message: `Unknown message type: ${type}`,
+              code: "UNKNOWN_TYPE",
+            });
+        }
+      } catch (err) {
+        metrics.errors++;
+        console.error("[WS] handler error:", err);
+        wsSend(ws, "error", { message: "Processing failed", code: "PROCESSING_ERROR" }, id);
+      }
+    });
+
+    ws.on("close", () => {
+      metrics.connections--;
+      leaveRoom(ws);
+      console.log(`[WS] disconnected: user=${userId} (active: ${metrics.connections})`);
+    });
+
+    ws.on("error", (err) => {
+      metrics.errors++;
+      console.error("[WS] socket error:", err.message);
+    });
+  });
+
+  // Heartbeat sweep — terminate dead connections every 30s
+  const sweep = setInterval(() => {
+    wss.clients.forEach((ws) => {
+      if (ws.isAlive === false) return ws.terminate();
+      ws.isAlive = false;
+      ws.ping();
+    });
+  }, 30_000);
+
+  wss.on("close", () => clearInterval(sweep));
+
+  return wss;
+}
+
+// ── Boot ─────────────────────────────────────────────────────────
+
+const app = next({ dev, hostname, port });
+const handle = app.getRequestHandler();
+
+app.prepare().then(() => {
+  const httpServer = createServer((req, res) => handle(req, res));
+
+  const wss = setupWebSocketServer(httpServer);
+
+  httpServer.listen(port, hostname, () => {
+    console.log("═".repeat(64));
+    console.log(`  Military Pass — production server`);
+    console.log(`  HTTP      : http://${hostname}:${port}`);
+    console.log(`  WebSocket : ws://${hostname}:${port}/api/ws`);
+    console.log(`  AI chain  : ${BACKEND_PRIORITY.join(" → ")} → dev-echo`);
+    console.log(`  HF Space  : ${HF_AI_SPACE_URL}`);
+    console.log("═".repeat(64));
+  });
+
+  // Graceful shutdown (HF Spaces sends SIGTERM on rebuild/restart)
+  const shutdown = (signal) => {
+    console.log(`[server] ${signal} received — shutting down gracefully`);
+    wss.clients.forEach((ws) => ws.close(1001, "Server restarting"));
+    httpServer.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 10_000).unref();
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+});

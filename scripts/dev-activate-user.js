@@ -1,0 +1,70 @@
+/**
+ * Development script to bypass email verification for testing
+ * Run: node scripts/dev-activate-user.js <email>
+ */
+
+const { createClient } = require("@supabase/supabase-js");
+require("dotenv").config({ path: ".env.local" });
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error("Missing Supabase credentials in .env.local");
+  process.exit(1);
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+});
+
+async function activateUser(email) {
+  try {
+    // Get user by email using admin API
+    const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
+    
+    if (listError) {
+      console.error("Error listing users:", listError);
+      process.exit(1);
+    }
+
+    const user = users.find(u => u.email === email);
+    
+    if (!user) {
+      console.error(`User with email ${email} not found`);
+      console.log("Available users:");
+      users.forEach(u => console.log(`  - ${u.email}`));
+      process.exit(1);
+    }
+
+    // Update user email confirmation
+    const { error: updateError } = await supabase.auth.admin.updateUserById(user.id, {
+      email_confirm: true
+    });
+
+    if (updateError) {
+      console.error("Error updating user:", updateError);
+      process.exit(1);
+    }
+
+    console.log(`✅ User ${email} has been activated successfully`);
+    console.log(`User ID: ${user.id}`);
+    console.log(`Email: ${user.email}`);
+    console.log(`Email Confirmed: true`);
+    
+  } catch (error) {
+    console.error("Error:", error);
+    process.exit(1);
+  }
+}
+
+const email = process.argv[2];
+if (!email) {
+  console.error("Usage: node scripts/dev-activate-user.js <email>");
+  process.exit(1);
+}
+
+activateUser(email);
