@@ -22,7 +22,7 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
         api_host: host,
         autocapture: false,
         disable_session_recording: true,
-        disable_exception_autocapture: true,
+        capture_exceptions: false,
         capture_pageview: false,
         capture_pageleave: false,
         persistence: "localStorage",
