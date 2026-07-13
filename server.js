@@ -2,8 +2,7 @@
  * Military Pass — Custom Production Server (Docker / Hugging Face Spaces)
  * ========================================================================
  * Wraps the Next.js request handler with a native WebSocket server so the
- * platform gets TRUE real-time streaming when self-hosted (HF Spaces Docker),
- * while Vercel deployments transparently fall back to the HTTP transport.
+ * platform gets TRUE real-time streaming when self-hosted (HF Spaces Docker).
  *
  *   ┌───────────────────────────── Port 7860 ─────────────────────────────┐
  *   │  HTTP  → Next.js request handler (all pages + API routes)           │
@@ -25,7 +24,8 @@
  */
 
 const { createServer } = require("node:http");
-const next = require("next");
+const fs = require("node:fs");
+const path = require("node:path");
 const { WebSocketServer } = require("ws");
 
 const dev = process.env.NODE_ENV !== "production";
@@ -436,10 +436,33 @@ function setupWebSocketServer(httpServer) {
 
 // ── Boot ─────────────────────────────────────────────────────────
 
-const app = next({ dev, hostname, port });
-const handle = app.getRequestHandler();
+let handle;
 
-app.prepare().then(() => {
+if (dev) {
+  // Dev mode: use next() factory which loads next.config.js normally
+  const next = require("next");
+  const app = next({ dev, hostname, port });
+  handle = app.getRequestHandler();
+  app.prepare().then(boot);
+} else {
+  // Production standalone: use NextServer directly with pre-built config
+  // Avoids loading next.config.js at runtime (requires webpack not in standalone)
+  const NextServer = require("next/dist/server/next-server").default;
+  const configPath = path.join(__dirname, ".next", "required-server-files.json");
+  const serverFiles = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  const app = new NextServer({
+    hostname,
+    port,
+    dir: __dirname,
+    dev: false,
+    customServer: true,
+    conf: serverFiles.config,
+  });
+  handle = app.getRequestHandler();
+  boot();
+}
+
+function boot() {
   const httpServer = createServer((req, res) => handle(req, res));
 
   const wss = setupWebSocketServer(httpServer);
@@ -463,4 +486,4 @@ app.prepare().then(() => {
   };
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
-});
+}

@@ -3,6 +3,9 @@
 # Gradio, spaces, torch, torchaudio are injected by HF Spaces build system.
 # Do NOT pin gradio/spaces/torch here — HF manages those versions.
 
+# Pin huggingface-hub to version with HfFolder (needed by gradio 5.0.0)
+huggingface-hub<0.26.0
+
 # Face Swap — InsightFace + ONNX
 insightface
 onnxruntime-gpu

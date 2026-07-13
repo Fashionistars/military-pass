@@ -33,12 +33,14 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# vercel CLI artifacts (not deploying to Vercel — HF Spaces only)
+.vercel
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
 .env.local
 
-.vercel
 .env*
 
 # Python
