@@ -1,11 +1,8 @@
 # Military Pass AI Engine — Hugging Face ZeroGPU Space Requirements
 # ================================================================
 
-# Gradio (HF Spaces SDK)
-gradio==5.0.0
-
-# ZeroGPU
-spaces==0.0.0
+# Gradio & ZeroGPU are injected by HF Spaces build system — do NOT pin here
+# gradio[oauth]==5.0.0 and spaces==0.51.0 are installed automatically
 
 # Face Swap — InsightFace + ONNX
 insightface==0.7.3
@@ -33,8 +30,7 @@ librosa==0.10.1
 scipy==1.12.0
 
 # Voice Training — HuBERT + FAISS
-torch==2.10.0
-torchaudio==2.10.0
+# torch & torchaudio injected by HF Spaces (torch<=2.11.0)
 transformers==4.37.2
 faiss-cpu==1.7.4
 
