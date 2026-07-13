@@ -7,7 +7,6 @@
 insightface
 onnxruntime-gpu
 opencv-python-headless
-huggingface-hub
 
 # Face Restoration — GFPGAN
 gfpgan

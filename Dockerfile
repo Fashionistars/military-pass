@@ -100,28 +100,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Non-root app user (UID 1000 — HF Spaces mandatory)
-RUN groupadd --gid 1000 appuser && useradd --create-home --uid 1000 --gid appuser --shell /bin/bash appuser \
-    && mkdir -p /app && chown -R appuser:appuser /app /home/appuser
+# node:22-slim already has UID/GID 1000 (the 'node' user) — use it directly
+# HF Spaces requires UID 1000; creating a new group with GID 1000 fails
+RUN mkdir -p /app && chown -R node:node /app
 
 WORKDIR /app
 
 # Next.js standalone output — minimal, pruned node_modules + server bootstrap
-COPY --from=builder --chown=appuser:appuser /app/.next/standalone ./
-COPY --from=builder --chown=appuser:appuser /app/.next/static ./.next/static
-COPY --from=builder --chown=appuser:appuser /app/public ./public
+COPY --from=builder --chown=node:node /app/.next/standalone ./
+COPY --from=builder --chown=node:node /app/.next/static ./.next/static
+COPY --from=builder --chown=node:node /app/public ./public
 
 # Our custom WebSocket-aware server replaces Next's auto-generated standalone server.js
-COPY --chown=appuser:appuser server.js ./server.js
+COPY --chown=node:node server.js ./server.js
 
 # `ws` isn't traced by standalone build (only server.js imports it, not app/ routes)
-COPY --from=deps --chown=appuser:appuser /app/node_modules/ws ./node_modules/ws
+COPY --from=deps --chown=node:node /app/node_modules/ws ./node_modules/ws
 
 # Entrypoint as root (must be before USER switch to set ownership + strip CRLF)
-COPY --chown=appuser:appuser entrypoint.sh /entrypoint.sh
+COPY --chown=node:node entrypoint.sh /entrypoint.sh
 RUN dos2unix /entrypoint.sh && chmod +x /entrypoint.sh
 
-USER appuser
+USER node
 
 # Port 7860 — mandatory for HF Spaces
 EXPOSE 7860
