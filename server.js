@@ -463,7 +463,32 @@ if (dev) {
 }
 
 function boot() {
-  const httpServer = createServer((req, res) => handle(req, res));
+  const httpServer = createServer((req, res) => {
+    // Serve static files from /.next/static/ explicitly (fixes Turbopack chunk 404s)
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    if (url.pathname.startsWith("/_next/static/")) {
+      const filePath = path.join(__dirname, ".next", "static", url.pathname.replace("/_next/static/", ""));
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        const ext = path.extname(filePath);
+        const mime = { ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".woff": "font/woff", ".woff2": "font/woff2", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".ico": "image/x-icon" };
+        res.writeHead(200, { "Content-Type": mime[ext] || "application/octet-stream", "Cache-Control": "public, max-age=31536000, immutable" });
+        fs.createReadStream(filePath).pipe(res);
+        return;
+      }
+    }
+    // Serve files from /public/ explicitly
+    if (!url.pathname.startsWith("/api/") && !url.pathname.startsWith("/_next/")) {
+      const pubPath = path.join(__dirname, "public", url.pathname);
+      if (fs.existsSync(pubPath) && fs.statSync(pubPath).isFile()) {
+        const ext = path.extname(pubPath);
+        const mime = { ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".ico": "image/x-icon", ".webp": "image/webp", ".gif": "image/gif" };
+        res.writeHead(200, { "Content-Type": mime[ext] || "application/octet-stream" });
+        fs.createReadStream(pubPath).pipe(res);
+        return;
+      }
+    }
+    handle(req, res);
+  });
 
   const wss = setupWebSocketServer(httpServer);
 
