@@ -20,7 +20,6 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
 
       posthog.init(token, {
         api_host: host,
-        api_path: "/ingest",
         autocapture: false,
         disable_session_recording: true,
         disable_exception_autocapture: true,
