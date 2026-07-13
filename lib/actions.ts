@@ -294,7 +294,8 @@ export async function endSession(sessionId: string, stats: {
 }) {
   try {
     const supabase = await safeClient();
-    // Get user_id from the session
+
+    // Try atomic RPC first (if it exists in the database)
     const { data: session } = await supabase
       .from("transform_sessions")
       .select("user_id")
@@ -302,38 +303,48 @@ export async function endSession(sessionId: string, stats: {
       .single();
 
     if (!session?.user_id) {
+      console.error("[actions] endSession: Session not found:", sessionId);
       return { error: "Session not found" };
     }
 
-    // Use atomic RPC to end session + deduct credits + log transaction
-    const { data: result, error: rpcError } = await supabase.rpc("end_session_atomic", {
-      p_session_id: sessionId,
-      p_user_id: session.user_id,
-      p_duration_seconds: stats.duration_seconds,
-      p_credits_used: stats.credits_used,
-      p_frames_processed: stats.frames_processed,
-      p_avg_latency_ms: stats.avg_latency_ms ?? 0,
-    });
+    // Try the atomic RPC (credits already deducted by CreditMeter during session,
+    // so p_credits_used=0 to avoid double deduction — just record the stats)
+    try {
+      const { data: result, error: rpcError } = await supabase.rpc("end_session_atomic", {
+        p_session_id: sessionId,
+        p_user_id: session.user_id,
+        p_duration_seconds: stats.duration_seconds,
+        p_credits_used: 0, // Credits already deducted during session by CreditMeter
+        p_frames_processed: stats.frames_processed,
+        p_avg_latency_ms: stats.avg_latency_ms ?? 0,
+      });
 
-    if (rpcError) {
-      console.error("[actions] end_session_atomic RPC error:", rpcError);
-      // Fallback: at least update the session record
-      await supabase
-        .from("transform_sessions")
-        .update({
-          status: "ended",
-          ended_at: new Date().toISOString(),
-          ...stats,
-        })
-        .eq("id", sessionId);
-      return { error: rpcError.message };
+      if (!rpcError && result?.success) {
+        return { success: true, final_balance: result.final_balance };
+      }
+    } catch {
+      // RPC doesn't exist yet — fall through to simple update
     }
 
-    if (!result?.success) {
-      console.warn("[actions] end_session_atomic returned non-success:", result);
+    // Fallback: simple session update (credits already deducted by CreditMeter)
+    const { error: updateError } = await supabase
+      .from("transform_sessions")
+      .update({
+        status: "ended",
+        ended_at: new Date().toISOString(),
+        duration_seconds: stats.duration_seconds,
+        credits_used: stats.credits_used,
+        frames_processed: stats.frames_processed,
+        avg_latency_ms: stats.avg_latency_ms ?? 0,
+      })
+      .eq("id", sessionId);
+
+    if (updateError) {
+      console.error("[actions] endSession update error:", updateError);
+      return { error: updateError.message };
     }
 
-    return { success: true, final_balance: result?.final_balance };
+    return { success: true };
   } catch (err) {
     console.error("[actions] endSession error:", err);
     return { error: "Failed to end session" };

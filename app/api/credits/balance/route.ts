@@ -40,11 +40,13 @@ export async function POST(request: NextRequest) {
 
     if (action === "deduct") {
       // Use RPC for atomic credit deduction to prevent race conditions
+      // Note: p_session_id is optional — older versions of the RPC don't accept it
+      // but Supabase client will ignore extra params if the function doesn't use them
       const { data: result, error: rpcError } = await supabase.rpc("deduct_credits", {
         p_user_id: user.id,
         p_amount: amount,
         p_description: "Live transformation session",
-        p_session_id: sessionId ?? null,
+        ...(sessionId ? { p_session_id: sessionId } : {}),
       });
 
       if (rpcError) {
