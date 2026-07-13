@@ -48,7 +48,6 @@ jobs:
               repo_id='${HF_AI_SPACE}',
               repo_type='space',
               commit_message='Auto-deploy from GitHub: ${GITHUB_SHA::7}',
-              delete_patterns='*',
           )
           print('AI Engine deployed to ${HF_AI_SPACE}')
           "
@@ -98,7 +97,6 @@ jobs:
               repo_id='${HF_FRONTEND_SPACE}',
               repo_type='space',
               commit_message='Auto-deploy from GitHub: ${GITHUB_SHA::7}',
-              delete_patterns='*',
           )
           print('Frontend deployed to ${HF_FRONTEND_SPACE}')
           "
