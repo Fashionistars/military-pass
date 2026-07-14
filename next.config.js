@@ -22,7 +22,6 @@ const nextConfig = {
   compress: true,
   output: "standalone",
   typescript: { ignoreBuildErrors: true },
-  eslint: { ignoreDuringBuilds: true },
 
   // ── Image optimization remote schemas ─────────────────────
   images: {

@@ -16,7 +16,7 @@ export async function GET() {
   async function checkHFSpace(): Promise<WorkerStatus> {
     const t0 = Date.now();
     try {
-      const res = await fetch(`${hf_space_url}/gradio_api/health`, {
+      const res = await fetch(`${hf_space_url}/`, {
         signal: AbortSignal.timeout(5000),
       });
       const latency = Date.now() - t0;
