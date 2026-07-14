@@ -7,11 +7,6 @@
  * Falls back to in-memory limiter if Redis is not configured.
  */
 
-const UPSTASH_REDIS_REST_URL = process.env.UPSTASH_REDIS_REST_URL ?? "";
-const UPSTASH_REDIS_REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? "";
-
-const hasRedis = Boolean(UPSTASH_REDIS_REST_URL && UPSTASH_REDIS_REST_TOKEN);
-
 interface RateLimitResult {
   allowed: boolean;
   remaining: number;
@@ -60,21 +55,28 @@ function memoryCheck(
 
 // ── Upstash Redis REST API ───────────────────────────────────────
 
+function getRedisConfig() {
+  const url = process.env.UPSTASH_REDIS_REST_URL ?? "";
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? "";
+  return { url, token, hasRedis: Boolean(url && token) };
+}
+
 async function redisCheck(
   key: string,
   maxRequests: number,
   windowMs: number,
 ): Promise<RateLimitResult> {
+  const { url, token } = getRedisConfig();
   const redisKey = `rl:${key}`;
   const now = Date.now();
   const resetTime = now + windowMs;
 
   try {
     // Atomic INCR + EXPIRE via Upstash pipeline
-    const res = await fetch(`${UPSTASH_REDIS_REST_URL}/pipeline`, {
+    const res = await fetch(`${url}/pipeline`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify([
@@ -100,8 +102,8 @@ async function redisCheck(
     }
 
     if (count > maxRequests) {
-      const ttlRes = await fetch(`${UPSTASH_REDIS_REST_URL}/ttl/${redisKey}`, {
-        headers: { Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}` },
+      const ttlRes = await fetch(`${url}/ttl/${redisKey}`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
       const ttlData = (await ttlRes.json()) as { result: number };
       const ttlSec = ttlData.result > 0 ? ttlData.result : Math.ceil(windowMs / 1000);
@@ -139,6 +141,7 @@ export class RateLimiter {
    * Falls back to in-memory if Redis is not configured.
    */
   async check(identifier: string): Promise<RateLimitResult> {
+    const { hasRedis } = getRedisConfig();
     if (hasRedis) {
       return redisCheck(identifier, this.maxRequests, this.windowMs);
     }
@@ -147,9 +150,10 @@ export class RateLimiter {
 
   reset(identifier: string): void {
     memoryStore.delete(identifier);
+    const { url, token, hasRedis } = getRedisConfig();
     if (hasRedis) {
-      fetch(`${UPSTASH_REDIS_REST_URL}/del/rl:${identifier}`, {
-        headers: { Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}` },
+      fetch(`${url}/del/rl:${identifier}`, {
+        headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {});
     }
   }
