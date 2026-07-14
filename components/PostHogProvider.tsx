@@ -8,7 +8,7 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
     if (process.env.NODE_ENV === "development") {
       return;
     }
-    initPostHog();
+    initPostHog().catch(() => {});
   }, []);
 
   return <>{children}</>;

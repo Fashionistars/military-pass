@@ -1,10 +1,9 @@
 "use client";
 
-import posthog from "posthog-js";
-
+let posthogInstance: any = null;
 let isInitialized = false;
 
-export function initPostHog() {
+export async function initPostHog() {
   if (isInitialized || typeof window === "undefined") return;
 
   const token = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
@@ -12,6 +11,9 @@ export function initPostHog() {
   if (!token) {
     return;
   }
+
+  const { default: posthog } = await import("posthog-js");
+  posthogInstance = posthog;
 
   posthog.init(token, {
     api_host: "https://us.posthog.com",
@@ -28,23 +30,23 @@ export function initPostHog() {
 }
 
 function safeCapture(event: string, properties?: Record<string, any>) {
-  if (!isInitialized || typeof window === "undefined") return;
+  if (!isInitialized || !posthogInstance || typeof window === "undefined") return;
   try {
-    posthog.capture(event, properties);
+    posthogInstance.capture(event, properties);
   } catch {}
 }
 
 function safeIdentify(distinctId: string, properties?: Record<string, any>) {
-  if (!isInitialized || typeof window === "undefined") return;
+  if (!isInitialized || !posthogInstance || typeof window === "undefined") return;
   try {
-    posthog.identify(distinctId, properties);
+    posthogInstance.identify(distinctId, properties);
   } catch {}
 }
 
 function safeCaptureException(error: Error) {
-  if (!isInitialized || typeof window === "undefined") return;
+  if (!isInitialized || !posthogInstance || typeof window === "undefined") return;
   try {
-    posthog.captureException(error);
+    posthogInstance.captureException(error);
   } catch {}
 }
 
