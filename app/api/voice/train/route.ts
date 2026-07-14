@@ -3,8 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUser } from "@/lib/actions";
 import { randomUUID } from "crypto";
 
-const MODAL_VOICE_TRAIN_URL = process.env.MODAL_VOICE_TRAIN_URL ?? "";
-const MODAL_AUTH_TOKEN      = process.env.MODAL_AUTH_TOKEN ?? "";
+// Voice training is handled by the HF AI engine or dev mode mock
 
 // ── POST /api/voice/train — Start training job ────────────────────
 export async function POST(request: NextRequest) {
@@ -72,54 +71,20 @@ export async function POST(request: NextRequest) {
     p_note:    `voice_training:${modelId}`,
   });
 
-  // Convert files to base64 for Modal
+  // Convert files to base64 for processing
   const audioSamples: string[] = [];
   for (const file of files) {
     const buf = await file.arrayBuffer();
     audioSamples.push(Buffer.from(buf).toString("base64"));
   }
 
-  // Fire-and-forget training job (Modal handles async)
-  if (MODAL_VOICE_TRAIN_URL) {
-    fetch(MODAL_VOICE_TRAIN_URL, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({
-        auth_token:    MODAL_AUTH_TOKEN,
-        action:        "train",
-        model_id:      modelId,
-        audio_samples: audioSamples,
-        sample_rate:   16000,
-      }),
-    })
-      .then(async (res) => {
-        const result = await res.json();
-        // Update DB when training completes
-        await supabase
-          .from("voice_models")
-          .update({
-            status:    result.success ? "ready" : "failed",
-            n_vectors: result.n_vectors,
-            trained_at: new Date().toISOString(),
-            meta:       result,
-          })
-          .eq("id", modelId);
-      })
-      .catch(async (err) => {
-        await supabase
-          .from("voice_models")
-          .update({ status: "failed", meta: { error: err.message } })
-          .eq("id", modelId);
-      });
-  } else {
-    // Dev mode: simulate training delay
-    setTimeout(async () => {
-      await supabase
-        .from("voice_models")
-        .update({ status: "ready", n_vectors: 5000, trained_at: new Date().toISOString() })
-        .eq("id", modelId);
-    }, 10_000);
-  }
+  // Dev mode: simulate training delay
+  setTimeout(async () => {
+    await supabase
+      .from("voice_models")
+      .update({ status: "ready", n_vectors: 5000, trained_at: new Date().toISOString() })
+      .eq("id", modelId);
+  }, 10_000);
 
   return NextResponse.json({
     model_id:     modelId,

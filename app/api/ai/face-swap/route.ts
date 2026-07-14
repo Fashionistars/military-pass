@@ -82,8 +82,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Run through the prioritized AI backend chain:
-    //    Hugging Face ZeroGPU Space → Modal.com → dev-echo (never throws)
+    // 5. Run through the AI backend chain:
+    //    Hugging Face ZeroGPU Space → dev-echo (never throws)
     const chainStart = performance.now();
     const result = await swapFace({
       frame_b64,

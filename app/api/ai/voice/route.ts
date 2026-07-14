@@ -43,8 +43,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Run through the prioritized AI backend chain:
-    //   Hugging Face ZeroGPU Space → Modal.com → dev-echo (never throws)
+    // Run through the AI backend chain:
+    //   Hugging Face ZeroGPU Space → dev-echo (never throws)
     const result = await transformVoice({ audio_b64, preset, pitch_override, speed_override });
 
     // Deduct credits after successful processing (skip for dev-echo passthrough)

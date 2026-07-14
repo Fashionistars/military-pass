@@ -207,7 +207,7 @@ export function getDefaultRegionalConfig(): RoutingConfig {
     regions: [
       {
         region: 'us-east-1',
-        endpoint: process.env.MODAL_FACE_SWAP_URL_US_EAST || '',
+        endpoint: process.env.HF_AI_SPACE_URL || 'https://fashionistar-military-pass-ai.hf.space',
         priority: 1,
         health: true,
         latency: 10,
@@ -215,7 +215,7 @@ export function getDefaultRegionalConfig(): RoutingConfig {
       },
       {
         region: 'us-west-2',
-        endpoint: process.env.MODAL_FACE_SWAP_URL_US_WEST || '',
+        endpoint: '',
         priority: 2,
         health: true,
         latency: 15,
@@ -223,7 +223,7 @@ export function getDefaultRegionalConfig(): RoutingConfig {
       },
       {
         region: 'eu-west-1',
-        endpoint: process.env.MODAL_FACE_SWAP_URL_EU_WEST || '',
+        endpoint: '',
         priority: 3,
         health: true,
         latency: 20,
@@ -231,7 +231,7 @@ export function getDefaultRegionalConfig(): RoutingConfig {
       },
       {
         region: 'ap-southeast-1',
-        endpoint: process.env.MODAL_FACE_SWAP_URL_AP_SOUTHEAST || '',
+        endpoint: '',
         priority: 4,
         health: true,
         latency: 25,
@@ -239,7 +239,7 @@ export function getDefaultRegionalConfig(): RoutingConfig {
       },
       {
         region: 'sa-east-1',
-        endpoint: process.env.MODAL_FACE_SWAP_URL_SA_EAST || '',
+        endpoint: '',
         priority: 5,
         health: true,
         latency: 30,

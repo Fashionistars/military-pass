@@ -3,14 +3,9 @@
  * ===============================================
  * Unified, prioritized AI inference backend resolver.
  *
- * Priority chain (env-configurable via AI_BACKEND_PRIORITY):
- *   1. "hf"    — Hugging Face ZeroGPU Space (Gradio API)   [default first]
- *   2. "modal" — Modal.com A10G workers (REST)             [fallback]
- *
- * Each provider is attempted in order; the first success wins.
- * All failures cascade to the next provider. If every provider
- * fails (or none is configured), a dev-mode echo result is returned
- * so the UI keeps functioning.
+ * Uses Hugging Face ZeroGPU Space (Gradio API) as the sole AI engine.
+ * If the HF engine fails, a dev-mode echo result is returned so the
+ * UI keeps functioning.
  *
  * Used by:
  *   - app/api/ai/face-swap/route.ts   (HTTP path)
@@ -26,17 +21,9 @@ const HF_AI_SPACE_URL =
   process.env.NEXT_PUBLIC_HF_AI_SPACE_URL ??
   "https://fashionistar-military-pass-ai.hf.space";
 
-const MODAL_FACE_SWAP_URL = process.env.MODAL_FACE_SWAP_URL ?? "";
-const MODAL_VOICE_URL     = process.env.MODAL_VOICE_URL     ?? "";
-const MODAL_AUTH_TOKEN    = process.env.MODAL_AUTH_TOKEN    ?? "";
-
-const BACKEND_PRIORITY = (process.env.AI_BACKEND_PRIORITY ?? "hf,modal")
-  .split(",")
-  .map((s) => s.trim().toLowerCase())
-  .filter(Boolean);
+const BACKEND_PRIORITY = ["hf"];
 
 const GRADIO_TIMEOUT_MS = 60_000;
-const MODAL_TIMEOUT_MS  = 60_000;
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -177,51 +164,6 @@ async function faceSwapViaHF(params: FaceSwapParams): Promise<FaceSwapResult> {
   };
 }
 
-async function faceSwapViaModal(params: FaceSwapParams): Promise<FaceSwapResult> {
-  if (!MODAL_FACE_SWAP_URL) throw new Error("Modal face swap URL not configured");
-
-  const t0 = Date.now();
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), MODAL_TIMEOUT_MS);
-
-  try {
-    const res = await fetch(MODAL_FACE_SWAP_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${MODAL_AUTH_TOKEN}`,
-      },
-      body: JSON.stringify({
-        auth_token: MODAL_AUTH_TOKEN,
-        action: "swap",
-        frame_b64: params.frame_b64,
-        avatar_embedding: params.avatar_embedding,
-        enhance: params.enhance ?? true,
-        align_skin: params.align_skin ?? true,
-        quality: params.quality ?? "balanced",
-      }),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) throw new Error(`Modal face swap HTTP ${res.status}`);
-
-    const out = (await res.json()) as Record<string, unknown>;
-    const resultB64 =
-      (out?.result_b64 as string) ?? (out?.frame_b64 as string) ?? "";
-    if (!resultB64) throw new Error("Modal face swap returned no result");
-
-    return {
-      result_b64: resultB64,
-      latency_ms: Date.now() - t0,
-      faces_detected: (out?.faces_detected as number) ?? undefined,
-      quality: params.quality ?? "balanced",
-      backend: "modal",
-    };
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
 // ── Voice providers ──────────────────────────────────────────────
 
 async function voiceViaHF(params: VoiceParams): Promise<VoiceResult> {
@@ -248,46 +190,6 @@ async function voiceViaHF(params: VoiceParams): Promise<VoiceResult> {
   };
 }
 
-async function voiceViaModal(params: VoiceParams): Promise<VoiceResult> {
-  if (!MODAL_VOICE_URL) throw new Error("Modal voice URL not configured");
-
-  const t0 = Date.now();
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), MODAL_TIMEOUT_MS);
-
-  try {
-    const res = await fetch(`${MODAL_VOICE_URL}/transform`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${MODAL_AUTH_TOKEN}`,
-      },
-      body: JSON.stringify({
-        audio_b64: params.audio_b64,
-        preset: params.preset ?? "operative",
-        pitch_override: params.pitch_override ?? null,
-        speed_override: params.speed_override ?? null,
-      }),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) throw new Error(`Modal voice HTTP ${res.status}`);
-
-    const out = (await res.json()) as Record<string, unknown>;
-    const audioB64 = (out?.audio_b64 as string) ?? "";
-    if (!audioB64) throw new Error("Modal voice returned no audio");
-
-    return {
-      audio_b64: audioB64,
-      latency_ms: Date.now() - t0,
-      preset: params.preset ?? "operative",
-      backend: "modal",
-    };
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
 // ── Public chain API ─────────────────────────────────────────────
 
 /**
@@ -297,7 +199,6 @@ async function voiceViaModal(params: VoiceParams): Promise<VoiceResult> {
 export async function swapFace(params: FaceSwapParams): Promise<FaceSwapResult> {
   const providers: Record<string, (p: FaceSwapParams) => Promise<FaceSwapResult>> = {
     hf: faceSwapViaHF,
-    modal: faceSwapViaModal,
   };
 
   const errors: string[] = [];
@@ -328,7 +229,6 @@ export async function swapFace(params: FaceSwapParams): Promise<FaceSwapResult> 
 export async function transformVoice(params: VoiceParams): Promise<VoiceResult> {
   const providers: Record<string, (p: VoiceParams) => Promise<VoiceResult>> = {
     hf: voiceViaHF,
-    modal: voiceViaModal,
   };
 
   const errors: string[] = [];
@@ -359,6 +259,5 @@ export function getBackendConfig() {
   return {
     priority: BACKEND_PRIORITY,
     hf_space_url: HF_AI_SPACE_URL,
-    modal_configured: Boolean(MODAL_FACE_SWAP_URL && MODAL_AUTH_TOKEN),
   };
 }

@@ -20,7 +20,7 @@ export async function middleware(request: NextRequest) {
                       request.headers.get("x-real-ip") || 
                       "anonymous";
     
-    const rateLimitResult = strictLimiter.check(identifier);
+    const rateLimitResult = await strictLimiter.check(identifier);
     
     if (!rateLimitResult.allowed) {
       return NextResponse.json(
@@ -28,7 +28,6 @@ export async function middleware(request: NextRequest) {
         { 
           status: 429,
           headers: {
-            "X-RateLimit-Limit": strictLimiter["maxRequests"].toString(),
             "X-RateLimit-Remaining": "0",
             "X-RateLimit-Reset": rateLimitResult.resetTime.toString(),
           }

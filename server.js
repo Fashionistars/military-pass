@@ -14,9 +14,8 @@
  *   └──────────────────────────────────────────────────────────────────────┘
  *
  * AI inference chain (mirrors lib/aiBackend.ts):
- *   1. Hugging Face ZeroGPU Space (Gradio API)  — primary
- *   2. Modal.com A10G workers (REST)            — fallback
- *   3. Dev echo                                 — last resort
+ *   1. Hugging Face ZeroGPU Space (Gradio API)  — sole engine
+ *   2. Dev echo                                 — last resort
  *
  * ✅ Connection management   ✅ Room-based broadcasting
  * ✅ Message routing         ✅ Performance monitoring
@@ -43,14 +42,7 @@ const HF_AI_SPACE_URL =
   process.env.NEXT_PUBLIC_HF_AI_SPACE_URL ||
   "https://fashionistar-military-pass-ai.hf.space";
 
-const MODAL_FACE_SWAP_URL = process.env.MODAL_FACE_SWAP_URL || "";
-const MODAL_VOICE_URL = process.env.MODAL_VOICE_URL || "";
-const MODAL_AUTH_TOKEN = process.env.MODAL_AUTH_TOKEN || "";
-
-const BACKEND_PRIORITY = (process.env.AI_BACKEND_PRIORITY || "hf,modal")
-  .split(",")
-  .map((s) => s.trim().toLowerCase())
-  .filter(Boolean);
+const BACKEND_PRIORITY = ["hf"];
 
 const AI_TIMEOUT_MS = 60_000;
 
@@ -128,47 +120,8 @@ async function faceSwapViaHF(p) {
   };
 }
 
-async function faceSwapViaModal(p) {
-  if (!MODAL_FACE_SWAP_URL) throw new Error("Modal face swap not configured");
-  const t0 = Date.now();
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
-  try {
-    const res = await fetch(MODAL_FACE_SWAP_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${MODAL_AUTH_TOKEN}`,
-      },
-      body: JSON.stringify({
-        auth_token: MODAL_AUTH_TOKEN,
-        action: "swap",
-        frame_b64: p.frame_b64,
-        avatar_embedding: p.avatar_embedding || [],
-        enhance: p.enhance !== false,
-        align_skin: p.align_skin !== false,
-        quality: p.quality || "balanced",
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Modal face swap HTTP ${res.status}`);
-    const out = await res.json();
-    const resultB64 = out.result_b64 || out.frame_b64 || "";
-    if (!resultB64) throw new Error("Modal face swap: empty result");
-    return {
-      result_b64: resultB64,
-      latency_ms: Date.now() - t0,
-      faces_detected: out.faces_detected,
-      quality: p.quality || "balanced",
-      backend: "modal",
-    };
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
 async function swapFace(p) {
-  const providers = { hf: faceSwapViaHF, modal: faceSwapViaModal };
+  const providers = { hf: faceSwapViaHF };
   const errors = [];
   for (const name of BACKEND_PRIORITY) {
     const fn = providers[name];
@@ -209,43 +162,8 @@ async function voiceViaHF(p) {
   };
 }
 
-async function voiceViaModal(p) {
-  if (!MODAL_VOICE_URL) throw new Error("Modal voice not configured");
-  const t0 = Date.now();
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${MODAL_VOICE_URL}/transform`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${MODAL_AUTH_TOKEN}`,
-      },
-      body: JSON.stringify({
-        audio_b64: p.audio_b64,
-        preset: p.preset || "operative",
-        pitch_override: p.pitch_override || null,
-        speed_override: p.speed_override || null,
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Modal voice HTTP ${res.status}`);
-    const out = await res.json();
-    const audioB64 = out.audio_b64 || "";
-    if (!audioB64) throw new Error("Modal voice: empty result");
-    return {
-      audio_b64: audioB64,
-      latency_ms: Date.now() - t0,
-      preset: p.preset || "operative",
-      backend: "modal",
-    };
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
 async function transformVoice(p) {
-  const providers = { hf: voiceViaHF, modal: voiceViaModal };
+  const providers = { hf: voiceViaHF };
   const errors = [];
   for (const name of BACKEND_PRIORITY) {
     const fn = providers[name];

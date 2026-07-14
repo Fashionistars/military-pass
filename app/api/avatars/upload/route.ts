@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUser, getUserCredits } from "@/lib/actions";
 import { getPostHogClient } from "@/lib/posthog-server";
 
-const FACE_SWAP_API  = process.env.MODAL_FACE_SWAP_URL ?? "";
-const MODAL_TOKEN    = process.env.MODAL_AUTH_TOKEN    ?? "";
+const HF_AI_SPACE_URL = process.env.HF_AI_SPACE_URL ?? process.env.NEXT_PUBLIC_HF_AI_SPACE_URL ?? "https://fashionistar-military-pass-ai.hf.space";
 const MAX_SIZE_BYTES = 5 * 1024 * 1024;  // 5MB
 
 /* ─── POST /api/avatars/upload ────────────────────────────────── */
@@ -51,46 +50,31 @@ export async function POST(request: NextRequest) {
     let faceDetected: boolean         = false;
     let enhancedB64:  string          = b64;  // store enhanced image if GFPGAN ran
 
-    if (FACE_SWAP_API) {
-      // ── Step 1: GFPGAN enhance the avatar photo (ultra quality)
-      console.log("[avatar/upload] Running GFPGAN enhancement…");
+    if (HF_AI_SPACE_URL) {
+      // ── Step 1: Enhance the avatar photo via HF AI engine
+      console.log("[avatar/upload] Running enhancement…");
       try {
-        const enhanceRes = await fetch(FACE_SWAP_API, {
+        const enhanceRes = await fetch(`${HF_AI_SPACE_URL}/gradio_api/call/enhance`, {
           method:  "POST",
-          headers: {
-            "Content-Type":  "application/json",
-            "Authorization": `Bearer ${MODAL_TOKEN}`,
-          },
-          body:   JSON.stringify({
-            auth_token: MODAL_TOKEN,
-            action:     "enhance",
-            image_b64:  b64,
-            quality:    "ultra",
-          }),
+          headers: { "Content-Type": "application/json" },
+          body:   JSON.stringify({ data: [b64, "ultra"] }),
           signal: AbortSignal.timeout(120_000),
         });
         const enhData = await enhanceRes.json();
         if (enhData.result_b64) {
           enhancedB64 = enhData.result_b64;
-          console.log("[avatar/upload] GFPGAN enhancement complete.");
+          console.log("[avatar/upload] Enhancement complete.");
         }
       } catch (e) {
-        console.warn("[avatar/upload] GFPGAN skipped:", e);
+        console.warn("[avatar/upload] Enhancement skipped:", e);
       }
 
       // ── Step 2: Extract 512-dim face embedding from enhanced image
       console.log("[avatar/upload] Extracting face embedding…");
-      const embedRes = await fetch(FACE_SWAP_API, {
+      const embedRes = await fetch(`${HF_AI_SPACE_URL}/gradio_api/call/extract_embedding`, {
         method:  "POST",
-        headers: {
-          "Content-Type":  "application/json",
-          "Authorization": `Bearer ${MODAL_TOKEN}`,
-        },
-        body:   JSON.stringify({
-          auth_token: MODAL_TOKEN,
-          action:     "extract_embedding",
-          image_b64:  enhancedB64,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body:   JSON.stringify({ data: [enhancedB64] }),
         signal: AbortSignal.timeout(120_000),
       });
 
@@ -177,7 +161,7 @@ export async function POST(request: NextRequest) {
         event: "avatar_uploaded",
         properties: {
           avatar_name:    name,
-          enhanced:       !!FACE_SWAP_API,
+          enhanced:       !!HF_AI_SPACE_URL,
           embedding_dims: embedding.length,
           file_size_mb:   parseFloat((file.size / 1024 / 1024).toFixed(2)),
         },
@@ -187,7 +171,7 @@ export async function POST(request: NextRequest) {
         success:         true,
         avatar,
         embedding_dims:  embedding.length,
-        enhanced:        FACE_SWAP_API ? true : false,
+        enhanced:        HF_AI_SPACE_URL ? true : false,
       }, { status: 201 });
 
     } catch (dbErr) {
