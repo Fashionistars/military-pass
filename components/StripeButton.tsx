@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import posthog from "posthog-js";
+import { analytics } from "@/lib/posthog-client";
 import styles from "./StripeButton.module.css";
 
 export interface StripeButtonProps {
@@ -26,7 +26,7 @@ export default function StripeButton({
 
   const handleClick = async () => {
     setLoading(true);
-    posthog.capture("plan_selected", {
+    analytics.capture("plan_selected", {
       plan_id:        planId,
       credits,
       price_usd:      priceUSD,

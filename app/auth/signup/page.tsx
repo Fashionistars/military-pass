@@ -2,7 +2,7 @@
 import { useState, useTransition } from "react";
 import { signUp } from "@/lib/actions";
 import Link from "next/link";
-import posthog from "posthog-js";
+import { analytics } from "@/lib/posthog-client";
 import styles from "../login/auth.module.css";
 
 export default function SignupPage() {
@@ -23,8 +23,8 @@ export default function SignupPage() {
       if (result?.error) {
         setError(result.error);
       } else {
-        posthog.identify(email, { email, username });
-        posthog.capture("user_signed_up", { method: "email", username });
+        analytics.identify(email, { email, username });
+        analytics.capture("user_signed_up", { method: "email", username });
       }
     });
   }

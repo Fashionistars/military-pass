@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import styles from "./PaystackButton.module.css";
-import posthog from "posthog-js";
+import { analytics } from "@/lib/posthog-client";
 
 declare global {
   interface Window {
@@ -79,7 +79,7 @@ export default function PaystackButton({
     }
 
     setLoading(true);
-    posthog.capture("plan_selected", {
+    analytics.capture("plan_selected", {
       plan_id:        planId,
       plan_name:      plan.name,
       credits:        plan.credits,

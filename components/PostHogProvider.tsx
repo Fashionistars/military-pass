@@ -1,35 +1,14 @@
 "use client";
 
 import { useEffect } from "react";
-import posthog from "posthog-js";
+import { initPostHog } from "@/lib/posthog-client";
 
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (process.env.NODE_ENV === "development") {
       return;
     }
-
-    if (typeof window !== "undefined") {
-      const token = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
-
-      if (!token) {
-        console.warn("[PostHog] No project token found — analytics disabled");
-        return;
-      }
-
-      posthog.init(token, {
-        api_host: "https://us.posthog.com",
-        autocapture: false,
-        disable_session_recording: true,
-        capture_exceptions: false,
-        capture_pageview: false,
-        capture_pageleave: false,
-        persistence: "localStorage",
-        loaded: () => {
-          console.log("[PostHog] Initialized successfully");
-        },
-      });
-    }
+    initPostHog();
   }, []);
 
   return <>{children}</>;

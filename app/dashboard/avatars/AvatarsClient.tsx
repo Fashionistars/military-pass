@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useCallback } from "react";
 import styles from "./avatars.module.css";
-import posthog from "posthog-js";
+import { analytics } from "@/lib/posthog-client";
 import { deleteAvatar, setDefaultAvatar } from "@/lib/actions";
 
 interface Avatar {
@@ -131,14 +131,14 @@ export default function AvatarsClient({
       if (!res.ok) {
         setError(data.error || "Upload failed. Please try again.");
         if (data.tips) setTips(data.tips);
-        posthog.capture("avatar_upload_failed", { error: data.error, user_id: userId });
+        analytics.capture("avatar_upload_failed", { error: data.error, user_id: userId });
         return;
       }
 
       setSuccess(true);
       if (data.avatar) {
         setAvatars((prev) => [data.avatar, ...prev]);
-        posthog.capture("avatar_uploaded", { avatar_id: data.avatar.id, user_id: userId });
+        analytics.capture("avatar_uploaded", { avatar_id: data.avatar.id, user_id: userId });
       }
 
       clearFile();
@@ -166,7 +166,7 @@ export default function AvatarsClient({
           is_default: a.id === avatarId,
         }))
       );
-      posthog.capture("avatar_set_default", { avatar_id: avatarId, user_id: userId });
+      analytics.capture("avatar_set_default", { avatar_id: avatarId, user_id: userId });
     } catch {
       setError("Failed to set default avatar.");
     }
@@ -183,7 +183,7 @@ export default function AvatarsClient({
         return;
       }
       setAvatars((prev) => prev.filter((a) => a.id !== avatarId));
-      posthog.capture("avatar_deleted", { avatar_id: avatarId, user_id: userId });
+      analytics.capture("avatar_deleted", { avatar_id: avatarId, user_id: userId });
     } catch {
       setError("Failed to delete avatar.");
     }

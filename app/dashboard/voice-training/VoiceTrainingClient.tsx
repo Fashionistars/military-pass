@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useCallback } from "react";
 import styles from "./voice-training.module.css";
-import posthog from "posthog-js";
+import { analytics } from "@/lib/posthog-client";
 
 interface VoiceModel {
   id:          string;
@@ -113,7 +113,7 @@ export default function VoiceTrainingClient({
 
     setProgress(40);
 
-    posthog.capture("voice_training_started", {
+    analytics.capture("voice_training_started", {
       model_name:   name,
       file_count:   files.length,
       total_mb:     parseFloat(totalMB.toFixed(2)),
@@ -128,7 +128,7 @@ export default function VoiceTrainingClient({
       if (!res.ok) {
         setPhase("error");
         setError(data.error ?? "Training failed");
-        posthog.captureException(new Error(data.error ?? "Voice training failed"));
+        analytics.captureException(new Error(data.error ?? "Voice training failed"));
         return;
       }
 
@@ -169,7 +169,7 @@ export default function VoiceTrainingClient({
       body:    JSON.stringify({ modelId }),
     });
     setModels((prev) => prev.filter((m) => m.id !== modelId));
-    posthog.capture("voice_model_deleted", { model_id: modelId, user_id: userId });
+    analytics.capture("voice_model_deleted", { model_id: modelId, user_id: userId });
   };
 
   // ── Render ────────────────────────────────────────────────────

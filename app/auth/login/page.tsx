@@ -2,7 +2,7 @@
 import { useState, useTransition } from "react";
 import { signIn } from "@/lib/actions";
 import Link from "next/link";
-import posthog from "posthog-js";
+import { analytics } from "@/lib/posthog-client";
 import styles from "./auth.module.css";
 
 export default function LoginPage() {
@@ -17,10 +17,10 @@ export default function LoginPage() {
       const result = await signIn(fd);
       if (result?.error) {
         setError(result.error);
-        posthog.capture("login_failed", { error: result.error });
+        analytics.capture("login_failed", { error: result.error });
       } else {
-        posthog.identify(email, { email });
-        posthog.capture("user_logged_in", { method: "email" });
+        analytics.identify(email, { email });
+        analytics.capture("user_logged_in", { method: "email" });
       }
     });
   }

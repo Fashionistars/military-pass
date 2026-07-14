@@ -1,6 +1,6 @@
 "use client";
 import { useState, useCallback, useRef } from "react";
-import posthog from "posthog-js";
+import { analytics } from "@/lib/posthog-client";
 import CameraFeed              from "@/components/studio/CameraFeed";
 import AudioProcessorComponent from "@/components/studio/AudioProcessorComponent";
 import StudioControls          from "@/components/studio/StudioControls";
@@ -79,7 +79,7 @@ export default function StudioClient({ avatars, initialBalance, userId }: Studio
     sessionStartRef.current = Date.now();
     setIsRunning(true);
     setIsPaused(false);
-    posthog.capture("studio_session_started", {
+    analytics.capture("studio_session_started", {
       avatar_id:   selectedAvatar.id,
       avatar_name: selectedAvatar.name,
       voice_preset: selectedVoice,
@@ -122,7 +122,7 @@ export default function StudioClient({ avatars, initialBalance, userId }: Studio
         console.error("[studio] Error ending session:", err);
       }
 
-      posthog.capture("studio_session_ended", {
+      analytics.capture("studio_session_ended", {
         duration_seconds:  duration,
         credits_used:      creditsUsed,
         frames_processed:  frameCountRef.current,
@@ -139,7 +139,7 @@ export default function StudioClient({ avatars, initialBalance, userId }: Studio
   const handleExhausted = useCallback(() => {
     setCreditsExhausted(true);
     setIsRunning(false);
-    posthog.capture("credits_exhausted", { user_id: userId });
+    analytics.capture("credits_exhausted", { user_id: userId });
   }, [userId]);
 
   const handleError = useCallback((err: string) => {
@@ -158,7 +158,7 @@ export default function StudioClient({ avatars, initialBalance, userId }: Studio
   const handleAvatarSelect = useCallback((avatar: Avatar | null) => {
     setSelectedAvatar(avatar);
     if (avatar) {
-      posthog.capture("avatar_selected", { avatar_id: avatar.id, avatar_name: avatar.name, user_id: userId });
+      analytics.capture("avatar_selected", { avatar_id: avatar.id, avatar_name: avatar.name, user_id: userId });
     }
   }, [userId]);
 
