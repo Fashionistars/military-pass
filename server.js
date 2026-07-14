@@ -469,16 +469,33 @@ function boot() {
 
     // ── Proxy PostHog /ingest/ requests to us.posthog.com ──────────
     if (url.pathname.startsWith("/ingest/")) {
+      // Handle CORS preflight
+      if (req.method === "OPTIONS") {
+        res.writeHead(204, {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "*",
+        });
+        res.end();
+        return;
+      }
+
       const proxyUrl = `https://us.posthog.com${url.pathname}${url.search}`;
+      const proxyHeaders = { ...req.headers, host: "us.posthog.com" };
+      delete proxyHeaders["origin"];
+      delete proxyHeaders["referer"];
+
       const proxyReq = https.request(proxyUrl, {
         method: req.method,
-        headers: { ...req.headers, host: "us.posthog.com" },
+        headers: proxyHeaders,
       }, (proxyRes) => {
-        res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+        const headers = { ...proxyRes.headers };
+        headers["Access-Control-Allow-Origin"] = "*";
+        res.writeHead(proxyRes.statusCode || 200, headers);
         proxyRes.pipe(res);
       });
       proxyReq.on("error", () => {
-        res.writeHead(502, { "Content-Type": "application/json" });
+        res.writeHead(502, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
         res.end(JSON.stringify({ error: "Analytics proxy failed" }));
       });
       req.pipe(proxyReq);
