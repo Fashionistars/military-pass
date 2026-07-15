@@ -36,8 +36,8 @@ required_vars=(
 )
 optional_vars=(
   "HF_AI_SPACE_URL"
-  "MODAL_FACE_SWAP_URL"
-  "MODAL_VOICE_URL"
+  "UPSTASH_REDIS_REST_URL"
+  "UPSTASH_REDIS_REST_TOKEN"
   "STRIPE_SECRET_KEY"
   "PAYSTACK_SECRET_KEY"
 )
@@ -58,7 +58,7 @@ if [ -z "${HF_AI_SPACE_URL:-}${NEXT_PUBLIC_HF_AI_SPACE_URL:-}" ]; then
   echo "  [INFO] Using default Hugging Face AI Space URL (fashionistar/military-pass-ai)."
 fi
 
-echo "  AI backend priority: ${AI_BACKEND_PRIORITY:-hf,modal}"
+echo "  AI backend priority: ${AI_BACKEND_PRIORITY:-hf}"
 echo "══════════════════════════════════════════════════════════════"
 
 # Hand off to the Node process (PID 1) — exec ensures signals propagate correctly.

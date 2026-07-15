@@ -111,7 +111,7 @@ export default function FooterSection() {
               {" · "}
               <span style={{ color: "var(--accent-purple)" }}>RVC v2</span>
               {" · "}
-              <span style={{ color: "var(--accent-green)" }}>Modal.com GPU</span>
+              <span style={{ color: "var(--accent-green)" }}>Hugging Face ZeroGPU</span>
             </p>
           </div>
         </div>
